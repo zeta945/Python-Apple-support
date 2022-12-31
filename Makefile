@@ -543,7 +543,7 @@ $$(PYTHON_SRCDIR-$(target))/Makefile: \
 	# Apply target Python patches
 	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python.patch
 	# Apply jw patch
-	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch
+	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && autoconf
 	# Configure target Python
 	cd $$(PYTHON_SRCDIR-$(target)) && \
 		./configure \
@@ -766,7 +766,7 @@ $$(PYTHON_SRCDIR-$(sdk))/Makefile: \
 	# Apply target Python patches
 	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python.patch
 	# Apply jw patch
-	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch
+	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && autoconf
 	# Configure target Python
 	cd $$(PYTHON_SRCDIR-$(sdk)) && \
 		./configure \
