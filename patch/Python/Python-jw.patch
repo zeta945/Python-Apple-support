@@ -1,6 +1,6 @@
-From eb95c822a542c46ab8824bd0d58221a9e344edc6 Mon Sep 17 00:00:00 2001
+From 786146bf57b0ea6b18bab422b2c12ac8ff818a95 Mon Sep 17 00:00:00 2001
 From: zeta945 <zeta945@gmail.com>
-Date: Sat, 31 Dec 2022 23:09:48 +0800
+Date: Sat, 31 Dec 2022 23:45:58 +0800
 Subject: [PATCH] Merge branch 'master' into patch_base
 
 ---
@@ -9,7 +9,7 @@ Subject: [PATCH] Merge branch 'master' into patch_base
  2 files changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/Modules/getpath_noop.c b/Modules/getpath_noop.c
-index c10e41d..6ff0e15 100644
+index c10e41d..5d4863a 100644
 --- a/Modules/getpath_noop.c
 +++ b/Modules/getpath_noop.c
 @@ -8,3 +8,10 @@ _PyConfig_InitPathConfig(PyConfig *config, int compute_path_config)
@@ -20,7 +20,7 @@ index c10e41d..6ff0e15 100644
 +PyObject *
 +_Py_Get_Getpath_CodeObject(void)
 +{
-+    return Py_RETURN_NONE;
++    Py_RETURN_NONE;
 +}
 +
 diff --git a/configure.ac b/configure.ac
