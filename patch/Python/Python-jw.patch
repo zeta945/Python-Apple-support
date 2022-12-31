@@ -1,12 +1,28 @@
-From 8101ef7706cf4eb8f88664f93f1555deb0547314 Mon Sep 17 00:00:00 2001
+From eb95c822a542c46ab8824bd0d58221a9e344edc6 Mon Sep 17 00:00:00 2001
 From: zeta945 <zeta945@gmail.com>
-Date: Sat, 31 Dec 2022 18:00:08 +0800
-Subject: [PATCH] jw patch
+Date: Sat, 31 Dec 2022 23:09:48 +0800
+Subject: [PATCH] Merge branch 'master' into patch_base
 
 ---
- configure.ac | 4 +++-
- 1 file changed, 3 insertions(+), 1 deletion(-)
+ Modules/getpath_noop.c | 7 +++++++
+ configure.ac           | 4 +++-
+ 2 files changed, 10 insertions(+), 1 deletion(-)
 
+diff --git a/Modules/getpath_noop.c b/Modules/getpath_noop.c
+index c10e41d..6ff0e15 100644
+--- a/Modules/getpath_noop.c
++++ b/Modules/getpath_noop.c
+@@ -8,3 +8,10 @@ _PyConfig_InitPathConfig(PyConfig *config, int compute_path_config)
+ {
+     return PyStatus_Error("path configuration is unsupported");
+ }
++
++PyObject *
++_Py_Get_Getpath_CodeObject(void)
++{
++    return Py_RETURN_NONE;
++}
++
 diff --git a/configure.ac b/configure.ac
 index 99d3147..66384ea 100644
 --- a/configure.ac
