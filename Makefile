@@ -90,6 +90,7 @@ HOST_ARCH=$(shell uname -m)
 HOST_PYTHON=install/macOS/macosx/python-$(PYTHON_VERSION)
 HOST_PYTHON_EXE=$(HOST_PYTHON)/bin/python3
 BDIST_WHEEL=$(HOST_PYTHON)/lib/python$(PYTHON_VER)/site-packages/wheel/bdist_wheel.py
+AUTOCONF=$(shell which autoconf)
 
 # Force the path to be minimal. This ensures that anything in the user environment
 # (in particular, homebrew and user-provided Python installs) aren't inadvertently
@@ -543,7 +544,7 @@ $$(PYTHON_SRCDIR-$(target))/Makefile: \
 	# Apply target Python patches
 	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python.patch
 	# Apply jw patch
-	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && autoconf
+	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && $(AUTOCONF)
 	# Configure target Python
 	cd $$(PYTHON_SRCDIR-$(target)) && \
 		./configure \
@@ -766,7 +767,7 @@ $$(PYTHON_SRCDIR-$(sdk))/Makefile: \
 	# Apply target Python patches
 	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python.patch
 	# Apply jw patch
-	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && autoconf
+	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && $(AUTOCONF)
 	# Configure target Python
 	cd $$(PYTHON_SRCDIR-$(sdk)) && \
 		./configure \
