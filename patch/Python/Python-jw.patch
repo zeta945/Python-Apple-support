@@ -1,13 +1,1344 @@
-From 786146bf57b0ea6b18bab422b2c12ac8ff818a95 Mon Sep 17 00:00:00 2001
+From 201ee66d45308eac7c535f1fddd485b496327609 Mon Sep 17 00:00:00 2001
 From: zeta945 <zeta945@gmail.com>
-Date: Sat, 31 Dec 2022 23:45:58 +0800
-Subject: [PATCH] Merge branch 'master' into patch_base
+Date: Sun, 1 Jan 2023 10:44:13 +0800
+Subject: [PATCH] jw patch
 
 ---
- Modules/getpath_noop.c | 7 +++++++
- configure.ac           | 4 +++-
- 2 files changed, 10 insertions(+), 1 deletion(-)
+ Lib/_ios_support.py                         |  36 ++++++
+ Lib/ctypes/util.py                          |   2 +-
+ Lib/distutils/tests/test_cygwinccompiler.py |  15 ++-
+ Lib/distutils/unixccompiler.py              |  14 +-
+ Lib/distutils/util.py                       |   2 +-
+ Lib/importlib/_bootstrap_external.py        |   2 +-
+ Lib/platform.py                             |  69 +++++++++-
+ Lib/site.py                                 |   5 +-
+ Lib/subprocess.py                           |   5 +-
+ Lib/sysconfig.py                            |  47 ++++++-
+ Lib/test/support/__init__.py                |  21 ++-
+ Lib/test/test_asyncio/test_events.py        |  10 ++
+ Lib/test/test_asyncio/test_streams.py       |   6 +-
+ Lib/test/test_asyncio/test_unix_events.py   |   2 +
+ Lib/test/test_fcntl.py                      |   4 +-
+ Lib/test/test_httpservers.py                |   3 +-
+ Lib/test/test_io.py                         |   3 +-
+ Lib/test/test_logging.py                    |  14 ++
+ Lib/test/test_marshal.py                    |   7 +-
+ Lib/test/test_mmap.py                       |   6 +-
+ Lib/test/test_platform.py                   |   9 +-
+ Lib/test/test_posix.py                      |  21 ++-
+ Lib/test/test_shutil.py                     |   2 +
+ Lib/test/test_socket.py                     |  18 ++-
+ Lib/test/test_socketserver.py               |   4 +
+ Lib/test/test_sundry.py                     |   4 +-
+ Lib/test/test_sysconfig.py                  |   2 +-
+ Lib/test/test_threading.py                  |   4 +-
+ Lib/test/test_venv.py                       |   6 +-
+ Lib/test/test_zipfile.py                    |   2 +
+ Lib/webbrowser.py                           |  51 ++++++++
+ Makefile.pre.in                             |   2 +
+ Modules/_posixsubprocess.c                  |  34 ++++-
+ Modules/faulthandler.c                      |   9 ++
+ Modules/getpath_noop.c                      |   7 +
+ Modules/mathmodule.c                        |   4 +
+ Modules/posixmodule.c                       |  32 ++++-
+ Modules/pwdmodule.c                         |  35 +++++
+ Modules/timemodule.c                        |   9 ++
+ Python/bootstrap_hash.c                     |   8 +-
+ Python/marshal.c                            |  14 +-
+ aclocal.m4                                  |  84 ++----------
+ config.sub                                  |   6 +-
+ configure.ac                                | 135 ++++++++++++++++++--
+ setup.py                                    |  39 ++++--
+ 45 files changed, 639 insertions(+), 175 deletions(-)
+ create mode 100644 Lib/_ios_support.py
 
+diff --git a/Lib/_ios_support.py b/Lib/_ios_support.py
+new file mode 100644
+index 0000000..54ee81e
+--- /dev/null
++++ b/Lib/_ios_support.py
+@@ -0,0 +1,36 @@
++from ctypes import cdll, c_void_p, c_char_p
++from ctypes import util
++
++
++def get_platform_ios():
++    objc = cdll.LoadLibrary(util.find_library(b'objc'))
++
++    objc.objc_getClass.restype = c_void_p
++    objc.objc_getClass.argtypes = [c_char_p]
++    objc.objc_msgSend.restype = c_void_p
++    objc.objc_msgSend.argtypes = [c_void_p, c_void_p]
++    objc.sel_registerName.restype = c_void_p
++    objc.sel_registerName.argtypes = [c_char_p]
++
++    UIDevice = c_void_p(objc.objc_getClass(b'UIDevice'))
++    SEL_currentDevice = c_void_p(objc.sel_registerName(b'currentDevice'))
++    device = c_void_p(objc.objc_msgSend(UIDevice, SEL_currentDevice))
++
++    SEL_systemVersion = c_void_p(objc.sel_registerName(b'systemVersion'))
++    systemVersion = c_void_p(objc.objc_msgSend(device, SEL_systemVersion))
++
++    SEL_systemName = c_void_p(objc.sel_registerName(b'systemName'))
++    systemName = c_void_p(objc.objc_msgSend(device, SEL_systemName))
++
++    SEL_model = c_void_p(objc.sel_registerName(b'model'))
++    systemModel = c_void_p(objc.objc_msgSend(device, SEL_model))
++
++    # UTF8String returns a const char*;
++    SEL_UTF8String = c_void_p(objc.sel_registerName(b'UTF8String'))
++    objc.objc_msgSend.restype = c_char_p
++
++    system = objc.objc_msgSend(systemName, SEL_UTF8String).decode()
++    release = objc.objc_msgSend(systemVersion, SEL_UTF8String).decode()
++    model = objc.objc_msgSend(systemModel, SEL_UTF8String).decode()
++
++    return system, release, model
+diff --git a/Lib/ctypes/util.py b/Lib/ctypes/util.py
+index 0c2510e..6c3c43f 100644
+--- a/Lib/ctypes/util.py
++++ b/Lib/ctypes/util.py
+@@ -67,7 +67,7 @@ if os.name == "nt":
+                 return fname
+         return None
+ 
+-elif os.name == "posix" and sys.platform == "darwin":
++elif os.name == "posix" and sys.platform in ('darwin', 'ios', 'tvos', 'watchos'):
+     from ctypes.macholib.dyld import dyld_find as _dyld_find
+     def find_library(name):
+         possible = ['lib%s.dylib' % name,
+diff --git a/Lib/distutils/tests/test_cygwinccompiler.py b/Lib/distutils/tests/test_cygwinccompiler.py
+index 0912ffd..969dd39 100644
+--- a/Lib/distutils/tests/test_cygwinccompiler.py
++++ b/Lib/distutils/tests/test_cygwinccompiler.py
+@@ -5,11 +5,14 @@ import os
+ from io import BytesIO
+ from test.support import run_unittest
+ 
+-from distutils import cygwinccompiler
+-from distutils.cygwinccompiler import (check_config_h,
+-                                       CONFIG_H_OK, CONFIG_H_NOTOK,
+-                                       CONFIG_H_UNCERTAIN, get_versions,
+-                                       get_msvcr)
++# Importing cygwinccompiler attempts to import other tools
++# that may not exist unless you're on win32.
++if sys.platform == 'win32':
++    from distutils import cygwinccompiler
++    from distutils.cygwinccompiler import (check_config_h,
++                                           CONFIG_H_OK, CONFIG_H_NOTOK,
++                                           CONFIG_H_UNCERTAIN, get_versions,
++                                           get_msvcr)
+ from distutils.tests import support
+ 
+ class FakePopen(object):
+@@ -24,7 +27,7 @@ class FakePopen(object):
+         else:
+             self.stdout = os.popen(cmd, 'r')
+ 
+-
++@unittest.skipUnless(sys.platform == "win32", "These tests are only for win32")
+ class CygwinCCompilerTestCase(support.TempdirManager,
+                               unittest.TestCase):
+ 
+diff --git a/Lib/distutils/unixccompiler.py b/Lib/distutils/unixccompiler.py
+index d00c489..5d12b47 100644
+--- a/Lib/distutils/unixccompiler.py
++++ b/Lib/distutils/unixccompiler.py
+@@ -270,9 +270,9 @@ class UnixCCompiler(CCompiler):
+         static_f = self.library_filename(lib, lib_type='static')
+ 
+         if sys.platform == 'darwin':
+-            # On OSX users can specify an alternate SDK using
+-            # '-isysroot', calculate the SDK root if it is specified
+-            # (and use it further on)
++            # On macOS users can specify an alternate SDK using
++            # '-isysroot <path>' or --sysroot=<path>, calculate the SDK root
++            # if it is specified (and use it further on)
+             #
+             # Note that, as of Xcode 7, Apple SDKs may contain textual stub
+             # libraries with .tbd extensions rather than the normal .dylib
+@@ -291,12 +291,14 @@ class UnixCCompiler(CCompiler):
+             cflags = sysconfig.get_config_var('CFLAGS')
+             m = re.search(r'-isysroot\s*(\S+)', cflags)
+             if m is None:
+-                sysroot = _osx_support._default_sysroot(sysconfig.get_config_var('CC'))
++                m = re.search(r'--sysroot=(\S+)', cflags)
++                if m is None:
++                    sysroot = _osx_support._default_sysroot(sysconfig.get_config_var('CC'))
++                else:
++                    sysroot = m.group(1)
+             else:
+                 sysroot = m.group(1)
+ 
+-
+-
+         for dir in dirs:
+             shared = os.path.join(dir, shared_f)
+             dylib = os.path.join(dir, dylib_f)
+diff --git a/Lib/distutils/util.py b/Lib/distutils/util.py
+index 2ce5c5b..6e10a0c 100644
+--- a/Lib/distutils/util.py
++++ b/Lib/distutils/util.py
+@@ -170,7 +170,7 @@ def check_environ ():
+     if _environ_checked:
+         return
+ 
+-    if os.name == 'posix' and 'HOME' not in os.environ:
++    if os.name == 'posix' and 'HOME' not in os.environ and sys.platform not in ('ios', 'tvos', 'watchos'):
+         try:
+             import pwd
+             os.environ['HOME'] = pwd.getpwuid(os.getuid())[5]
+diff --git a/Lib/importlib/_bootstrap_external.py b/Lib/importlib/_bootstrap_external.py
+index f603a89..faea51d 100644
+--- a/Lib/importlib/_bootstrap_external.py
++++ b/Lib/importlib/_bootstrap_external.py
+@@ -52,7 +52,7 @@ _pathseps_with_colon = {f':{s}' for s in path_separators}
+ 
+ # Bootstrap-related code ######################################################
+ _CASE_INSENSITIVE_PLATFORMS_STR_KEY = 'win',
+-_CASE_INSENSITIVE_PLATFORMS_BYTES_KEY = 'cygwin', 'darwin'
++_CASE_INSENSITIVE_PLATFORMS_BYTES_KEY = 'cygwin', 'darwin', 'ios', 'tvos', 'watchos'
+ _CASE_INSENSITIVE_PLATFORMS =  (_CASE_INSENSITIVE_PLATFORMS_BYTES_KEY
+                                 + _CASE_INSENSITIVE_PLATFORMS_STR_KEY)
+ 
+diff --git a/Lib/platform.py b/Lib/platform.py
+index 9e9f3af..85cf05d 100644
+--- a/Lib/platform.py
++++ b/Lib/platform.py
+@@ -451,6 +451,35 @@ def mac_ver(release='', versioninfo=('', '', ''), machine=''):
+     # If that also doesn't work return the default values
+     return release, versioninfo, machine
+ 
++def iOS_ver():
++    """ Get iOS/tvOS version information, and return it as a
++        tuple (system, release, model). All tuple entries are strings.
++
++        Equivalent of:
++        system = [[UIDevice currentDevice].systemName] UTF8String]
++        release = [[UIDevice currentDevice].systemVersion] UTF8String]
++        model = [[UIDevice currentDevice].model] UTF8String]
++    """
++    import _ios_support
++    return _ios_support.get_platform_ios()
++
++def is_simulator():
++    """Determine if the current platform is a device simulator.
++
++    Only useful when working with iOS, tvOS or watchOS, because
++    Apple provides simulator platforms for those devices.
++
++    If the platform is actual hardware, returns False. Will also
++    return False for device *emulators*, which are indistinguishable
++    from actual devices because they are reproducing actual device
++    properties.
++    """
++    if sys.platform in ('ios', 'tvos', 'watchos'):
++        return sys.implementation._multiarch.endswith('simulator')
++
++    # All other platforms aren't simulators.
++    return False
++
+ def _java_getprop(name, default):
+ 
+     from java.lang import System
+@@ -607,7 +636,7 @@ def _syscmd_file(target, default=''):
+         default in case the command should fail.
+ 
+     """
+-    if sys.platform in ('dos', 'win32', 'win16'):
++    if sys.platform in ('dos', 'win32', 'win16', 'ios', 'tvos', 'watchos'):
+         # XXX Others too ?
+         return default
+ 
+@@ -749,6 +778,24 @@ class _Processor:
+             csid, cpu_number = vms_lib.getsyi('SYI$_CPU', 0)
+             return 'Alpha' if cpu_number >= 128 else 'VAX'
+ 
++    # On iOS, tvOS and watchOS, os.uname returns the architecture
++    # as uname.machine. On device it doesn't; but there's only
++    # on CPU architecture on device
++    def get_ios():
++        if sys.implementation._multiarch.endswith('simulator'):
++            return os.uname().machine
++        return 'arm64'
++
++    def get_tvos():
++        if sys.implementation._multiarch.endswith('simulator'):
++            return os.uname().machine
++        return 'arm64'
++
++    def get_watchos():
++        if sys.implementation._multiarch.endswith('simulator'):
++            return os.uname().machine
++        return 'arm64_32'
++
+     def from_subprocess():
+         """
+         Fall back to `uname -p`
+@@ -902,6 +949,14 @@ def uname():
+         system = 'Windows'
+         release = 'Vista'
+ 
++    # Normalize responses on Apple mobile platforms
++    if sys.platform in ('ios', 'tvos'):
++        system, release, model = iOS_ver()
++        # Simulator devices report as "arm64" or "x86_64";
++        # use the model as the basis for the normalized machine name.
++        if sys.implementation._multiarch.endswith('simulator'):
++            machine = f'{model} Simulator'
++
+     vals = system, node, release, version, machine
+     # Replace 'unknown' values with the more portable ''
+     _uname_cache = uname_result(*map(_unknown_as_blank, vals))
+@@ -1214,11 +1269,13 @@ def platform(aliased=0, terse=0):
+         system, release, version = system_alias(system, release, version)
+ 
+     if system == 'Darwin':
+-        # macOS (darwin kernel)
+-        macos_release = mac_ver()[0]
+-        if macos_release:
+-            system = 'macOS'
+-            release = macos_release
++        if sys.platform in ('ios', 'tvos'):
++            system, release, model = iOS_ver()
++        else:
++            macos_release = mac_ver()[0]
++            if macos_release:
++                system = 'macOS'
++                release = macos_release
+ 
+     if system == 'Windows':
+         # MS platforms
+diff --git a/Lib/site.py b/Lib/site.py
+index 69670d9..1ec548d 100644
+--- a/Lib/site.py
++++ b/Lib/site.py
+@@ -294,7 +294,10 @@ def _get_path(userbase):
+ 
+     if sys.platform == 'darwin' and sys._framework:
+         return f'{userbase}/lib/python/site-packages'
+-
++    elif sys.platform in ('ios', 'tvos', 'watchos'):
++        from sysconfig import get_path
++        return get_path('purelib', sys.platform)
++        
+     return f'{userbase}/lib/python{version[0]}.{version[1]}/site-packages'
+ 
+ 
+diff --git a/Lib/subprocess.py b/Lib/subprocess.py
+index 9cadd1b..973243c 100644
+--- a/Lib/subprocess.py
++++ b/Lib/subprocess.py
+@@ -74,8 +74,9 @@ except ModuleNotFoundError:
+ else:
+     _mswindows = True
+ 
+-# wasm32-emscripten and wasm32-wasi do not support processes
+-_can_fork_exec = sys.platform not in {"emscripten", "wasi"}
++# some platforms do not support processes
++_can_fork_exec = sys.platform not in {"emscripten", "wasi", "ios", "tvos", "watchos"}
++
+ 
+ if _mswindows:
+     import _winapi
+diff --git a/Lib/sysconfig.py b/Lib/sysconfig.py
+index ebe3711..9d07e9a 100644
+--- a/Lib/sysconfig.py
++++ b/Lib/sysconfig.py
+@@ -95,6 +95,33 @@ _INSTALL_SCHEMES = {
+         'scripts': '{base}/Scripts',
+         'data': '{base}',
+         },
++    'ios': {
++        'stdlib': '{installed_base}/lib/python%s' % sys.version[:3],
++        'platstdlib': '{installed_base}/lib/python%s' % sys.version[:3],
++        'purelib': '{installed_base}/lib/python%s/site-packages' % sys.version[:3],
++        'platlib': '{installed_base}/lib/python%s/site-packages' % sys.version[:3],
++        'include': '{installed_base}/include',
++        'scripts': '{installed_base}/bin',
++        'data': '{installed_base}/Resources',
++        },
++    'tvos': {
++        'stdlib': '{installed_base}/lib/python%s' % sys.version[:3],
++        'platstdlib': '{installed_base}/lib/python%s' % sys.version[:3],
++        'purelib': '{installed_base}/lib/python%s/site-packages' % sys.version[:3],
++        'platlib': '{installed_base}/lib/python%s/site-packages' % sys.version[:3],
++        'include': '{installed_base}/include',
++        'scripts': '{installed_base}/bin',
++        'data': '{installed_base}/Resources',
++        },
++    'watchos': {
++        'stdlib': '{installed_base}/lib/python%s' % sys.version[:3],
++        'platstdlib': '{installed_base}/lib/python%s' % sys.version[:3],
++        'purelib': '{installed_base}/lib/python%s/site-packages' % sys.version[:3],
++        'platlib': '{installed_base}/lib/python%s/site-packages' % sys.version[:3],
++        'include': '{installed_base}/include',
++        'scripts': '{installed_base}/bin',
++        'data': '{installed_base}/Resources',
++        },
+     }
+ 
+ # For the OS-native venv scheme, we essentially provide an alias:
+@@ -283,6 +310,12 @@ def _get_preferred_schemes():
+             'home': 'posix_home',
+             'user': 'nt_user',
+         }
++    if sys.platform in ('ios', 'tvos', 'watchos'):
++        return {
++            'prefix': sys.platform,
++            'home': sys.platform,
++            'user': sys.platform,
++        }
+     if sys.platform == 'darwin' and sys._framework:
+         return {
+             'prefix': 'posix_prefix',
+@@ -788,10 +821,16 @@ def get_platform():
+         if m:
+             release = m.group()
+     elif osname[:6] == "darwin":
+-        import _osx_support
+-        osname, release, machine = _osx_support.get_platform_osx(
+-                                            get_config_vars(),
+-                                            osname, release, machine)
++        if sys.platform in ("ios", "tvos", "watchos"):
++            import _ios_support
++            _, release, model = _ios_support.get_platform_ios()
++            osname = sys.platform
++            machine = sys.implementation._multiarch
++        else:
++            import _osx_support
++            osname, release, machine = _osx_support.get_platform_osx(
++                                                get_config_vars(),
++                                                osname, release, machine)
+ 
+     return f"{osname}-{release}-{machine}"
+ 
+diff --git a/Lib/test/support/__init__.py b/Lib/test/support/__init__.py
+index c33f90d..041789e 100644
+--- a/Lib/test/support/__init__.py
++++ b/Lib/test/support/__init__.py
+@@ -47,7 +47,7 @@ __all__ = [
+     "check__all__", "skip_if_buggy_ucrt_strfptime",
+     "check_disallow_instantiation", "check_sanitizer", "skip_if_sanitizer",
+     # sys
+-    "is_jython", "is_android", "is_emscripten", "is_wasi",
++    "is_jython", "is_android", "is_emscripten", "is_wasi", "is_apple_mobile",
+     "check_impl_detail", "unix_shell", "setswitchinterval",
+     # network
+     "open_urlresource",
+@@ -507,7 +507,7 @@ is_jython = sys.platform.startswith('java')
+ 
+ is_android = hasattr(sys, 'getandroidapilevel')
+ 
+-if sys.platform not in ('win32', 'vxworks'):
++if sys.platform not in ('win32', 'vxworks', 'ios', 'tvos', 'watchos'):
+     unix_shell = '/system/bin/sh' if is_android else '/bin/sh'
+ else:
+     unix_shell = None
+@@ -517,12 +517,25 @@ else:
+ is_emscripten = sys.platform == "emscripten"
+ is_wasi = sys.platform == "wasi"
+ 
+-has_fork_support = hasattr(os, "fork") and not is_emscripten and not is_wasi
++# Apple mobile platforms (iOS/tvOS/watchOS) are POSIX-like but do not
++# have subprocess or fork support.
++is_apple_mobile = sys.platform in ('ios', 'tvos', 'watchos')
++
++has_fork_support = (
++    hasattr(os, "fork")
++    and not is_emscripten
++    and not is_wasi
++    and not is_apple_mobile
++)
+ 
+ def requires_fork():
+     return unittest.skipUnless(has_fork_support, "requires working os.fork()")
+ 
+-has_subprocess_support = not is_emscripten and not is_wasi
++has_subprocess_support = (
++    not is_emscripten
++    and not is_wasi
++    and not is_apple_mobile
++)
+ 
+ def requires_subprocess():
+     """Used for subprocess, os.spawn calls, fd inheritance"""
+diff --git a/Lib/test/test_asyncio/test_events.py b/Lib/test/test_asyncio/test_events.py
+index c431fea..4892aa6 100644
+--- a/Lib/test/test_asyncio/test_events.py
++++ b/Lib/test/test_asyncio/test_events.py
+@@ -33,6 +33,7 @@ from asyncio import proactor_events
+ from asyncio import selector_events
+ from test.test_asyncio import utils as test_utils
+ from test import support
++from test.support import is_apple_mobile
+ from test.support import socket_helper
+ from test.support import threading_helper
+ from test.support import ALWAYS_EQ, LARGEST, SMALLEST
+@@ -542,6 +543,7 @@ class EventLoopTestsMixin:
+             self._basetest_create_connection(conn_fut)
+ 
+     @socket_helper.skip_unless_bind_unix_socket
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_unix_connection(self):
+         # Issue #20682: On Mac OS X Tiger, getsockname() returns a
+         # zero-length address for UNIX socket.
+@@ -634,6 +636,7 @@ class EventLoopTestsMixin:
+         self.assertEqual(cm.exception.reason, 'CERTIFICATE_VERIFY_FAILED')
+ 
+     @unittest.skipIf(ssl is None, 'No ssl module')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_ssl_connection(self):
+         with test_utils.run_test_server(use_ssl=True) as httpd:
+             create_connection = functools.partial(
+@@ -645,6 +648,7 @@ class EventLoopTestsMixin:
+ 
+     @socket_helper.skip_unless_bind_unix_socket
+     @unittest.skipIf(ssl is None, 'No ssl module')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_ssl_unix_connection(self):
+         # Issue #20682: On Mac OS X Tiger, getsockname() returns a
+         # zero-length address for UNIX socket.
+@@ -860,6 +864,7 @@ class EventLoopTestsMixin:
+         return server, path
+ 
+     @socket_helper.skip_unless_bind_unix_socket
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_unix_server(self):
+         proto = MyProto(loop=self.loop)
+         server, path = self._make_unix_server(lambda: proto)
+@@ -888,6 +893,7 @@ class EventLoopTestsMixin:
+         server.close()
+ 
+     @unittest.skipUnless(hasattr(socket, 'AF_UNIX'), 'No UNIX Sockets')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_unix_server_path_socket_error(self):
+         proto = MyProto(loop=self.loop)
+         sock = socket.socket()
+@@ -953,6 +959,7 @@ class EventLoopTestsMixin:
+ 
+     @socket_helper.skip_unless_bind_unix_socket
+     @unittest.skipIf(ssl is None, 'No ssl module')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_unix_server_ssl(self):
+         proto = MyProto(loop=self.loop)
+         server, path = self._make_ssl_unix_server(
+@@ -983,6 +990,7 @@ class EventLoopTestsMixin:
+         server.close()
+ 
+     @unittest.skipIf(ssl is None, 'No ssl module')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_server_ssl_verify_failed(self):
+         proto = MyProto(loop=self.loop)
+         server, host, port = self._make_ssl_server(
+@@ -1013,6 +1021,7 @@ class EventLoopTestsMixin:
+ 
+     @socket_helper.skip_unless_bind_unix_socket
+     @unittest.skipIf(ssl is None, 'No ssl module')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_unix_server_ssl_verify_failed(self):
+         proto = MyProto(loop=self.loop)
+         server, path = self._make_ssl_unix_server(
+@@ -1073,6 +1082,7 @@ class EventLoopTestsMixin:
+ 
+     @socket_helper.skip_unless_bind_unix_socket
+     @unittest.skipIf(ssl is None, 'No ssl module')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_create_unix_server_ssl_verified(self):
+         proto = MyProto(loop=self.loop)
+         server, path = self._make_ssl_unix_server(
+diff --git a/Lib/test/test_asyncio/test_streams.py b/Lib/test/test_asyncio/test_streams.py
+index 95fc7a1..d16ee7b 100644
+--- a/Lib/test/test_asyncio/test_streams.py
++++ b/Lib/test/test_asyncio/test_streams.py
+@@ -17,7 +17,7 @@ except ImportError:
+ 
+ import asyncio
+ from test.test_asyncio import utils as test_utils
+-
++from test.support import is_apple_mobile
+ 
+ def tearDownModule():
+     asyncio.set_event_loop_policy(None)
+@@ -60,6 +60,7 @@ class StreamTests(test_utils.TestCase):
+             self._basetest_open_connection(conn_fut)
+ 
+     @socket_helper.skip_unless_bind_unix_socket
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_open_unix_connection(self):
+         with test_utils.run_test_unix_server() as httpd:
+             conn_fut = asyncio.open_unix_connection(httpd.address)
+@@ -81,6 +82,7 @@ class StreamTests(test_utils.TestCase):
+         self.assertEqual(messages, [])
+ 
+     @unittest.skipIf(ssl is None, 'No ssl module')
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_open_connection_no_loop_ssl(self):
+         with test_utils.run_test_server(use_ssl=True) as httpd:
+             conn_fut = asyncio.open_connection(
+@@ -119,6 +121,7 @@ class StreamTests(test_utils.TestCase):
+             self._basetest_open_connection_error(conn_fut)
+ 
+     @socket_helper.skip_unless_bind_unix_socket
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_open_unix_connection_error(self):
+         with test_utils.run_test_unix_server() as httpd:
+             conn_fut = asyncio.open_unix_connection(httpd.address)
+@@ -637,6 +640,7 @@ class StreamTests(test_utils.TestCase):
+         self.assertEqual(messages, [])
+ 
+     @socket_helper.skip_unless_bind_unix_socket
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_start_unix_server(self):
+ 
+         class MyServer:
+diff --git a/Lib/test/test_asyncio/test_unix_events.py b/Lib/test/test_asyncio/test_unix_events.py
+index 01c1214..e861c1d 100644
+--- a/Lib/test/test_asyncio/test_unix_events.py
++++ b/Lib/test/test_asyncio/test_unix_events.py
+@@ -13,6 +13,7 @@ import tempfile
+ import threading
+ import unittest
+ from unittest import mock
++from test.support import is_apple_mobile
+ from test.support import os_helper
+ from test.support import socket_helper
+ 
+@@ -276,6 +277,7 @@ class SelectorEventLoopSignalTests(test_utils.TestCase):
+ 
+ @unittest.skipUnless(hasattr(socket, 'AF_UNIX'),
+                      'UNIX Sockets are not supported')
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ class SelectorEventLoopUnixSocketTests(test_utils.TestCase):
+ 
+     def setUp(self):
+diff --git a/Lib/test/test_fcntl.py b/Lib/test/test_fcntl.py
+index fc8c393..16235b8 100644
+--- a/Lib/test/test_fcntl.py
++++ b/Lib/test/test_fcntl.py
+@@ -6,7 +6,7 @@ import struct
+ import sys
+ import unittest
+ from multiprocessing import Process
+-from test.support import verbose, cpython_only
++from test.support import verbose, cpython_only, is_apple_mobile
+ from test.support.import_helper import import_module
+ from test.support.os_helper import TESTFN, unlink
+ 
+@@ -25,7 +25,7 @@ def get_lockdata():
+         start_len = "qq"
+ 
+     if (sys.platform.startswith(('netbsd', 'freebsd', 'openbsd'))
+-        or sys.platform == 'darwin'):
++        or sys.platform == 'darwin' or is_apple_mobile):
+         if struct.calcsize('l') == 8:
+             off_t = 'l'
+             pid_t = 'i'
+diff --git a/Lib/test/test_httpservers.py b/Lib/test/test_httpservers.py
+index ca07886..713a91b 100644
+--- a/Lib/test/test_httpservers.py
++++ b/Lib/test/test_httpservers.py
+@@ -30,6 +30,7 @@ from io import BytesIO, StringIO
+ 
+ import unittest
+ from test import support
++from test.support import is_apple_mobile
+ from test.support import os_helper
+ from test.support import threading_helper
+ 
+@@ -401,7 +402,7 @@ class SimpleHTTPServerTestCase(BaseTestCase):
+         with open(os.path.join(self.tempdir, filename), 'wb') as f:
+             f.write(os_helper.TESTFN_UNDECODABLE)
+         response = self.request(self.base_url + '/')
+-        if sys.platform == 'darwin':
++        if sys.platform == 'darwin' or is_apple_mobile:
+             # On Mac OS the HFS+ filesystem replaces bytes that aren't valid
+             # UTF-8 into a percent-encoded value.
+             for name in os.listdir(self.tempdir):
+diff --git a/Lib/test/test_io.py b/Lib/test/test_io.py
+index 79aa2da..c6fc82c 100644
+--- a/Lib/test/test_io.py
++++ b/Lib/test/test_io.py
+@@ -41,6 +41,7 @@ from test.support.script_helper import (
+     assert_python_ok, assert_python_failure, run_python_until_end)
+ from test.support import import_helper
+ from test.support import os_helper
++from test.support import is_apple_mobile
+ from test.support import threading_helper
+ from test.support import warnings_helper
+ from test.support import skip_if_sanitizer
+@@ -609,7 +610,7 @@ class IOTest(unittest.TestCase):
+         # On Windows and Mac OSX this test consumes large resources; It takes
+         # a long time to build the >2 GiB file and takes >2 GiB of disk space
+         # therefore the resource must be enabled to run this test.
+-        if sys.platform[:3] == 'win' or sys.platform == 'darwin':
++        if sys.platform[:3] == 'win' or sys.platform == 'darwin' or is_apple_mobile:
+             support.requires(
+                 'largefile',
+                 'test requires %s bytes and a long time to run' % self.LARGE)
+diff --git a/Lib/test/test_logging.py b/Lib/test/test_logging.py
+index 350f4a5..54ef53a 100644
+--- a/Lib/test/test_logging.py
++++ b/Lib/test/test_logging.py
+@@ -43,6 +43,7 @@ import sys
+ import tempfile
+ from test.support.script_helper import assert_python_ok, assert_python_failure
+ from test import support
++from test.support import is_apple_mobile
+ from test.support import os_helper
+ from test.support import socket_helper
+ from test.support import threading_helper
+@@ -1787,9 +1788,20 @@ def _get_temp_domain_socket():
+     # just need a name - file can't be present, or we'll get an
+     # 'address already in use' error.
+     os.remove(fn)
++    # Check the size of the socket file name. If it exceeds 108
++    # characters (UNIX_PATH_MAX), it can't be used as a UNIX socket.
++    # In this case, fall back to a path constructed somewhere that
++    # is known to be short.
++    if len(fn) > 108:
++        fd, fn = tempfile.mkstemp(prefix='test_logging_', suffix='.sock', dir='/tmp')
++        os.close(fd)
++        # just need a name - file can't be present, or we'll get an
++        # 'address already in use' error.
++        os.remove(fn)
+     return fn
+ 
+ @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "Unix sockets required")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ class UnixSocketHandlerTest(SocketHandlerTest):
+ 
+     """Test for SocketHandler with unix sockets."""
+@@ -1873,6 +1885,7 @@ class DatagramHandlerTest(BaseTest):
+         self.assertEqual(self.log_output, "spam\neggs\n")
+ 
+ @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "Unix sockets required")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ class UnixDatagramHandlerTest(DatagramHandlerTest):
+ 
+     """Test for DatagramHandler using Unix sockets."""
+@@ -1967,6 +1980,7 @@ class SysLogHandlerTest(BaseTest):
+         self.assertEqual(self.log_output, b'<11>sp\xc3\xa4m\x00')
+ 
+ @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "Unix sockets required")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ class UnixSysLogHandlerTest(SysLogHandlerTest):
+ 
+     """Test for SysLogHandler with Unix sockets."""
+diff --git a/Lib/test/test_marshal.py b/Lib/test/test_marshal.py
+index a1a91f6..92fde54 100644
+--- a/Lib/test/test_marshal.py
++++ b/Lib/test/test_marshal.py
+@@ -1,5 +1,5 @@
+ from test import support
+-from test.support import os_helper, requires_debug_ranges
++from test.support import os_helper, requires_debug_ranges, is_apple_mobile
+ from test.support.script_helper import assert_python_ok
+ import array
+ import io
+@@ -262,7 +262,10 @@ class BugsTestCase(unittest.TestCase):
+         elif sys.platform == 'wasi':
+             MAX_MARSHAL_STACK_DEPTH = 1500
+         else:
+-            MAX_MARSHAL_STACK_DEPTH = 2000
++            if is_apple_mobile:
++                MAX_MARSHAL_STACK_DEPTH = 1500
++            else:
++                MAX_MARSHAL_STACK_DEPTH = 2000
+         for i in range(MAX_MARSHAL_STACK_DEPTH - 2):
+             last.append([0])
+             last = last[-1]
+diff --git a/Lib/test/test_mmap.py b/Lib/test/test_mmap.py
+index 213a44d..8727957 100644
+--- a/Lib/test/test_mmap.py
++++ b/Lib/test/test_mmap.py
+@@ -1,5 +1,5 @@
+ from test.support import (
+-    requires, _2G, _4G, gc_collect, cpython_only, is_emscripten
++    requires, _2G, _4G, gc_collect, cpython_only, is_emscripten, is_apple_mobile
+ )
+ from test.support.import_helper import import_module
+ from test.support.os_helper import TESTFN, unlink
+@@ -245,7 +245,7 @@ class MmapTests(unittest.TestCase):
+         with open(TESTFN, "r+b") as f:
+             self.assertRaises(ValueError, mmap.mmap, f.fileno(), mapsize, access=4)
+ 
+-        if os.name == "posix":
++        if os.name == "posix" and not is_apple_mobile:
+             # Try incompatible flags, prot and access parameters.
+             with open(TESTFN, "r+b") as f:
+                 self.assertRaises(ValueError, mmap.mmap, f.fileno(), mapsize,
+@@ -896,7 +896,7 @@ class LargeMmapTests(unittest.TestCase):
+         unlink(TESTFN)
+ 
+     def _make_test_file(self, num_zeroes, tail):
+-        if sys.platform[:3] == 'win' or sys.platform == 'darwin':
++        if sys.platform[:3] == 'win' or sys.platform == 'darwin' or is_apple_mobile:
+             requires('largefile',
+                 'test requires %s bytes and a long time to run' % str(0x180000000))
+         f = open(TESTFN, 'w+b')
+diff --git a/Lib/test/test_platform.py b/Lib/test/test_platform.py
+index c9f2757..b979c89 100644
+--- a/Lib/test/test_platform.py
++++ b/Lib/test/test_platform.py
+@@ -8,7 +8,7 @@ import unittest
+ from unittest import mock
+ 
+ from test import support
+-from test.support import os_helper
++from test.support import os_helper, is_apple_mobile
+ 
+ FEDORA_OS_RELEASE = """\
+ NAME=Fedora
+@@ -323,7 +323,7 @@ class PlatformTest(unittest.TestCase):
+     def test_mac_ver(self):
+         res = platform.mac_ver()
+ 
+-        if platform.uname().system == 'Darwin':
++        if platform.uname().system == 'Darwin' and not is_apple_mobile:
+             # We are on a macOS system, check that the right version
+             # information is returned
+             output = subprocess.check_output(['sw_vers'], text=True)
+@@ -355,7 +355,10 @@ class PlatformTest(unittest.TestCase):
+             else:
+                 self.assertEqual(res[2], 'PowerPC')
+ 
+-
++    @unittest.skipUnless(is_apple_mobile, 'iOS/tvOS/watchOS only test')
++    def test_ios_ver(self):
++        res = platform.ios_ver()
++        
+     @unittest.skipUnless(sys.platform == 'darwin', "OSX only test")
+     def test_mac_ver_with_fork(self):
+         # Issue7895: platform.mac_ver() crashes when using fork without exec
+diff --git a/Lib/test/test_posix.py b/Lib/test/test_posix.py
+index e643d8e..65e0e2d 100644
+--- a/Lib/test/test_posix.py
++++ b/Lib/test/test_posix.py
+@@ -2,6 +2,7 @@
+ 
+ from test import support
+ from test.support import import_helper
++from test.support import is_apple_mobile
+ from test.support import os_helper
+ from test.support import warnings_helper
+ from test.support.script_helper import assert_python_ok
+@@ -69,12 +70,19 @@ class PosixTester(unittest.TestCase):
+                              "getpid", "getpgrp", "getppid", "getuid", "sync",
+                            ]
+ 
++        # getgroups can't be invoked on iOS/tvOS/watchOS.
++        if is_apple_mobile:
++            NO_ARG_FUNCTIONS.append("getgroups")
++
+         for name in NO_ARG_FUNCTIONS:
+             posix_func = getattr(posix, name, None)
+             if posix_func is not None:
+                 with self.subTest(name):
+-                    posix_func()
+-                    self.assertRaises(TypeError, posix_func, 1)
++                    try:
++                        posix_func()
++                        self.assertRaises(TypeError, posix_func, 1)
++                    except Exception as e:
++                        self.fail('Problem invoking %s: %s' % (name, e))
+ 
+     @unittest.skipUnless(hasattr(posix, 'getresuid'),
+                          'test needs posix.getresuid()')
+@@ -776,9 +784,10 @@ class PosixTester(unittest.TestCase):
+             check_stat(uid, gid)
+             self.assertRaises(OSError, chown_func, first_param, 0, -1)
+             check_stat(uid, gid)
+-            if 0 not in os.getgroups():
+-                self.assertRaises(OSError, chown_func, first_param, -1, 0)
+-                check_stat(uid, gid)
++            if hasattr(os, 'getgroups') and not is_apple_mobile:
++                if 0 not in os.getgroups():
++                    self.assertRaises(OSError, chown_func, first_param, -1, 0)
++                    check_stat(uid, gid)
+         # test illegal types
+         for t in str, float:
+             self.assertRaises(TypeError, chown_func, first_param, t(uid), gid)
+@@ -1129,7 +1138,7 @@ class PosixTester(unittest.TestCase):
+         self.assertIsInstance(hi, int)
+         self.assertGreaterEqual(hi, lo)
+         # OSX evidently just returns 15 without checking the argument.
+-        if sys.platform != "darwin":
++        if sys.platform != 'darwin' and not is_apple_mobile:
+             self.assertRaises(OSError, posix.sched_get_priority_min, -23)
+             self.assertRaises(OSError, posix.sched_get_priority_max, -23)
+ 
+diff --git a/Lib/test/test_shutil.py b/Lib/test/test_shutil.py
+index 055c9af..338cb6f 100644
+--- a/Lib/test/test_shutil.py
++++ b/Lib/test/test_shutil.py
+@@ -1783,6 +1783,7 @@ class TestMisc(BaseTest, unittest.TestCase):
+             check_chown(dirname, uid, gid)
+ 
+ 
++@unittest.skipIf(support.has_subprocess_support, 'Test requires support for subprocesses.')
+ class TestWhich(BaseTest, unittest.TestCase):
+ 
+     def setUp(self):
+@@ -2649,6 +2650,7 @@ class TestGetTerminalSize(unittest.TestCase):
+         self.assertGreaterEqual(size.lines, 0)
+ 
+     @unittest.skipUnless(os.isatty(sys.__stdout__.fileno()), "not on tty")
++    @unittest.skipUnless(support.has_subprocess_support, 'Test requires support for subprocesses.')
+     @unittest.skipUnless(hasattr(os, 'get_terminal_size'),
+                          'need os.get_terminal_size()')
+     def test_stty_match(self):
+diff --git a/Lib/test/test_socket.py b/Lib/test/test_socket.py
+index b079549..1d82a4f 100644
+--- a/Lib/test/test_socket.py
++++ b/Lib/test/test_socket.py
+@@ -1,6 +1,7 @@
+ import unittest
+ from test import support
+ from test.support import os_helper
++from test.support import is_apple_mobile
+ from test.support import socket_helper
+ from test.support import threading_helper
+ 
+@@ -1157,7 +1158,7 @@ class GeneralModuleTests(unittest.TestCase):
+         # I've ordered this by protocols that have both a tcp and udp
+         # protocol, at least for modern Linuxes.
+         if (sys.platform.startswith(('freebsd', 'netbsd', 'gnukfreebsd'))
+-            or sys.platform in ('linux', 'darwin')):
++            or sys.platform in ('linux', 'darwin') or is_apple_mobile):
+             # avoid the 'echo' service on this platform, as there is an
+             # assumption breaking non-standard port/protocol entry
+             services = ('daytime', 'qotd', 'domain')
+@@ -3563,7 +3564,7 @@ class SCMRightsTest(SendrecvmsgServerTimeoutBase):
+     def _testFDPassCMSG_LEN(self):
+         self.createAndSendFDs(1)
+ 
+-    @unittest.skipIf(sys.platform == "darwin", "skipping, see issue #12958")
++    @unittest.skipIf(sys.platform == "darwin" or is_apple_mobile, "skipping, see issue #12958")
+     @unittest.skipIf(AIX, "skipping, see issue #22397")
+     @requireAttrs(socket, "CMSG_SPACE")
+     def testFDPassSeparate(self):
+@@ -3574,7 +3575,7 @@ class SCMRightsTest(SendrecvmsgServerTimeoutBase):
+                              maxcmsgs=2)
+ 
+     @testFDPassSeparate.client_skip
+-    @unittest.skipIf(sys.platform == "darwin", "skipping, see issue #12958")
++    @unittest.skipIf(sys.platform == "darwin" or is_apple_mobile, "skipping, see issue #12958")
+     @unittest.skipIf(AIX, "skipping, see issue #22397")
+     def _testFDPassSeparate(self):
+         fd0, fd1 = self.newFDs(2)
+@@ -3587,7 +3588,7 @@ class SCMRightsTest(SendrecvmsgServerTimeoutBase):
+                                           array.array("i", [fd1]))]),
+             len(MSG))
+ 
+-    @unittest.skipIf(sys.platform == "darwin", "skipping, see issue #12958")
++    @unittest.skipIf(sys.platform == "darwin" or is_apple_mobile, "skipping, see issue #12958")
+     @unittest.skipIf(AIX, "skipping, see issue #22397")
+     @requireAttrs(socket, "CMSG_SPACE")
+     def testFDPassSeparateMinSpace(self):
+@@ -3601,7 +3602,7 @@ class SCMRightsTest(SendrecvmsgServerTimeoutBase):
+                              maxcmsgs=2, ignoreflags=socket.MSG_CTRUNC)
+ 
+     @testFDPassSeparateMinSpace.client_skip
+-    @unittest.skipIf(sys.platform == "darwin", "skipping, see issue #12958")
++    @unittest.skipIf(sys.platform == "darwin" or is_apple_mobile, "skipping, see issue #12958")
+     @unittest.skipIf(AIX, "skipping, see issue #22397")
+     def _testFDPassSeparateMinSpace(self):
+         fd0, fd1 = self.newFDs(2)
+@@ -3625,7 +3626,7 @@ class SCMRightsTest(SendrecvmsgServerTimeoutBase):
+             nbytes = self.sendmsgToServer([msg])
+         self.assertEqual(nbytes, len(msg))
+ 
+-    @unittest.skipIf(sys.platform == "darwin", "see issue #24725")
++    @unittest.skipIf(sys.platform == "darwin" or is_apple_mobile, "skipping, see issue #24725")
+     def testFDPassEmpty(self):
+         # Try to pass an empty FD array.  Can receive either no array
+         # or an empty array.
+@@ -4445,28 +4446,33 @@ class SendrecvmsgUnixStreamTestBase(SendrecvmsgConnectedBase,
+     pass
+ 
+ @requireAttrs(socket.socket, "sendmsg")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ @requireAttrs(socket, "AF_UNIX")
+ class SendmsgUnixStreamTest(SendmsgStreamTests, SendrecvmsgUnixStreamTestBase):
+     pass
+ 
+ @requireAttrs(socket.socket, "recvmsg")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ @requireAttrs(socket, "AF_UNIX")
+ class RecvmsgUnixStreamTest(RecvmsgTests, RecvmsgGenericStreamTests,
+                             SendrecvmsgUnixStreamTestBase):
+     pass
+ 
+ @requireAttrs(socket.socket, "recvmsg_into")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ @requireAttrs(socket, "AF_UNIX")
+ class RecvmsgIntoUnixStreamTest(RecvmsgIntoTests, RecvmsgGenericStreamTests,
+                                 SendrecvmsgUnixStreamTestBase):
+     pass
+ 
+ @requireAttrs(socket.socket, "sendmsg", "recvmsg")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ @requireAttrs(socket, "AF_UNIX", "SOL_SOCKET", "SCM_RIGHTS")
+ class RecvmsgSCMRightsStreamTest(SCMRightsTest, SendrecvmsgUnixStreamTestBase):
+     pass
+ 
+ @requireAttrs(socket.socket, "sendmsg", "recvmsg_into")
++@unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+ @requireAttrs(socket, "AF_UNIX", "SOL_SOCKET", "SCM_RIGHTS")
+ class RecvmsgIntoSCMRightsStreamTest(RecvmsgIntoMixin, SCMRightsTest,
+                                      SendrecvmsgUnixStreamTestBase):
+diff --git a/Lib/test/test_socketserver.py b/Lib/test/test_socketserver.py
+index 2edb1e0..dd8b2cb 100644
+--- a/Lib/test/test_socketserver.py
++++ b/Lib/test/test_socketserver.py
+@@ -8,6 +8,7 @@ import os
+ import select
+ import signal
+ import socket
++import sys
+ import tempfile
+ import threading
+ import unittest
+@@ -16,6 +17,7 @@ import socketserver
+ import test.support
+ from test.support import reap_children, verbose
+ from test.support import os_helper
++from test.support import reap_children, verbose, is_apple_mobile
+ from test.support import socket_helper
+ from test.support import threading_helper
+ 
+@@ -198,12 +200,14 @@ class SocketServerTest(unittest.TestCase):
+                             self.stream_examine)
+ 
+     @requires_unix_sockets
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_UnixStreamServer(self):
+         self.run_server(socketserver.UnixStreamServer,
+                         socketserver.StreamRequestHandler,
+                         self.stream_examine)
+ 
+     @requires_unix_sockets
++    @unittest.skipIf(is_apple_mobile, "%s doesn't fully support UNIX sockets." % sys.platform)
+     def test_ThreadingUnixStreamServer(self):
+         self.run_server(socketserver.ThreadingUnixStreamServer,
+                         socketserver.StreamRequestHandler,
+diff --git a/Lib/test/test_sundry.py b/Lib/test/test_sundry.py
+index de2e730..ccf2403 100644
+--- a/Lib/test/test_sundry.py
++++ b/Lib/test/test_sundry.py
+@@ -1,5 +1,6 @@
+ """Do a minimal test of all the modules that aren't otherwise tested."""
+ import importlib
++import sys
+ from test import support
+ from test.support import import_helper
+ from test.support import warnings_helper
+@@ -20,7 +21,8 @@ class TestUntestedModules(unittest.TestCase):
+ 
+             import distutils.bcppcompiler
+             import distutils.ccompiler
+-            import distutils.cygwinccompiler
++            if sys.platform.startswith('win'):
++                import distutils.cygwinccompiler
+             import distutils.filelist
+             import distutils.text_file
+             import distutils.unixccompiler
+diff --git a/Lib/test/test_sysconfig.py b/Lib/test/test_sysconfig.py
+index d96371d..5634962 100644
+--- a/Lib/test/test_sysconfig.py
++++ b/Lib/test/test_sysconfig.py
+@@ -336,7 +336,7 @@ class TestSysConfig(unittest.TestCase):
+         self.assertTrue(os.path.isfile(config_h), config_h)
+ 
+     def test_get_scheme_names(self):
+-        wanted = ['nt', 'posix_home', 'posix_prefix', 'posix_venv', 'nt_venv', 'venv']
++        wanted = ['nt', 'posix_home', 'posix_prefix', 'posix_venv', 'nt_venv', 'venv', 'tvos', 'watchos']
+         if HAS_USER_BASE:
+             wanted.extend(['nt_user', 'osx_framework_user', 'posix_user'])
+         self.assertEqual(get_scheme_names(), tuple(sorted(wanted)))
+diff --git a/Lib/test/test_threading.py b/Lib/test/test_threading.py
+index 9c6561c..ccccfb8 100644
+--- a/Lib/test/test_threading.py
++++ b/Lib/test/test_threading.py
+@@ -3,7 +3,7 @@ Tests for the threading module.
+ """
+ 
+ import test.support
+-from test.support import threading_helper, requires_subprocess
++from test.support import threading_helper, requires_subprocess, is_apple_mobile
+ from test.support import verbose, cpython_only, os_helper
+ from test.support.import_helper import import_module
+ from test.support.script_helper import assert_python_ok, assert_python_failure
+@@ -1171,6 +1171,7 @@ class SubinterpThreadingTests(BaseTestCase):
+             os.set_blocking(r, False)
+         return (r, w)
+ 
++    @unittest.skipIf(is_apple_mobile, "%s doesn't have os.pipe" % sys.platform)
+     def test_threads_join(self):
+         # Non-daemon threads should be joined at subinterpreter shutdown
+         # (issue #18808)
+@@ -1199,6 +1200,7 @@ class SubinterpThreadingTests(BaseTestCase):
+         # The thread was joined properly.
+         self.assertEqual(os.read(r, 1), b"x")
+ 
++    @unittest.skipIf(is_apple_mobile, "%s doesn't have os.pipe" % sys.platform)
+     def test_threads_join_2(self):
+         # Same as above, but a delay gets introduced after the thread's
+         # Python code returned but before the thread state is deleted.
+diff --git a/Lib/test/test_venv.py b/Lib/test/test_venv.py
+index 86ce60f..0780e37 100644
+--- a/Lib/test/test_venv.py
++++ b/Lib/test/test_venv.py
+@@ -19,7 +19,7 @@ import sysconfig
+ import tempfile
+ from test.support import (captured_stdout, captured_stderr, requires_zlib,
+                           skip_if_broken_multiprocessing_synchronize, verbose,
+-                          requires_subprocess, is_emscripten, is_wasi,
++                          requires_subprocess, is_apple_mobile, is_emscripten, is_wasi,
+                           requires_venv_with_pip, TEST_HOME_DIR)
+ from test.support.os_helper import (can_symlink, EnvironmentVarGuard, rmtree)
+ import unittest
+@@ -40,7 +40,9 @@ requireVenvCreate = unittest.skipUnless(
+ 
+ if is_emscripten or is_wasi:
+     raise unittest.SkipTest("venv is not available on Emscripten/WASI.")
+-
++if is_apple_mobile:
++    raise unittest.SkipTest("venv is not available on mobile Apple platforms.")
++    
+ @requires_subprocess()
+ def check_output(cmd, encoding=None):
+     p = subprocess.Popen(cmd,
+diff --git a/Lib/test/test_zipfile.py b/Lib/test/test_zipfile.py
+index f4c11d8..fb1ef8b 100644
+--- a/Lib/test/test_zipfile.py
++++ b/Lib/test/test_zipfile.py
+@@ -1166,6 +1166,7 @@ class PyZipFileTests(unittest.TestCase):
+             self.skipTest('requires write access to the installed location')
+         unlink(filename)
+ 
++    @unittest.skipIf(sys.dont_write_bytecode, "Test requires ability to write bytecode")
+     def test_write_pyfile(self):
+         self.requiresWriteAccess(os.path.dirname(__file__))
+         with TemporaryFile() as t, zipfile.PyZipFile(t, "w") as zipfp:
+@@ -1210,6 +1211,7 @@ class PyZipFileTests(unittest.TestCase):
+             self.assertCompiledIn('email/__init__.py', names)
+             self.assertCompiledIn('email/mime/text.py', names)
+ 
++    @unittest.skipIf(sys.dont_write_bytecode, "Test requires ability to write bytecode")
+     def test_write_filtered_python_package(self):
+         import test
+         packagedir = os.path.dirname(test.__file__)
+diff --git a/Lib/webbrowser.py b/Lib/webbrowser.py
+index 44974d4..ae4e188 100644
+--- a/Lib/webbrowser.py
++++ b/Lib/webbrowser.py
+@@ -596,6 +596,57 @@ def register_standard_browsers():
+ 
+     # what to do if _tryorder is now empty?
+ 
++#
++# Platform support for iOS
++#
++if sys.platform == 'ios':
++    class MobileSafari(BaseBrowser):
++        def open(self, url, new=0, autoraise=True):
++            # This code is the equivalent of:
++            #   NSURL *nsurl = [NSURL URLWithString:url];
++            #   [[UIApplication sharedApplication] openURL:nsurl];
++            from ctypes import cdll, c_void_p, c_char_p, c_uint32
++            from ctypes import util
++            objc = cdll.LoadLibrary(util.find_library(b'objc'))
++            cf = cdll.LoadLibrary(util.find_library(b'CoreFoundation'))
++            objc.objc_getClass.restype = c_void_p
++            objc.objc_getClass.argtypes = [c_char_p]
++            objc.sel_registerName.restype = c_void_p
++            objc.sel_registerName.argtypes = [c_char_p]
++            cf.CFStringCreateWithCString.restype = c_void_p
++            cf.CFStringCreateWithCString.argtypes = [c_void_p, c_char_p, c_uint32]
++
++            # Get an NSString describing the URL
++            kCFStringEncodingUTF8 = 0x08000100
++            url = c_void_p(cf.CFStringCreateWithCString(None, url.encode('utf-8'), kCFStringEncodingUTF8))
++            autorelease = c_void_p(objc.sel_registerName(b'autorelease'))
++            objc.objc_msgSend.argtypes = [c_void_p, c_void_p]
++            objc.objc_msgSend.restype = c_void_p
++            objc.objc_msgSend(url, autorelease)
++
++            # Get an NSURL object representing the URL
++            NSURL = c_void_p(objc.objc_getClass(b'NSURL'))
++            urlWithString_ = c_void_p(objc.sel_registerName(b'URLWithString:'))
++            objc.objc_msgSend.restype = c_void_p
++            objc.objc_msgSend.argtypes = [c_void_p, c_void_p, c_void_p]
++            nsurl = c_void_p(objc.objc_msgSend(NSURL, urlWithString_, url))
++
++            # Get the shared UIApplication instance
++            UIApplication = c_void_p(objc.objc_getClass(b'UIApplication'))
++            sharedApplication = c_void_p(objc.sel_registerName(b'sharedApplication'))
++            objc.objc_msgSend.argtypes = [c_void_p, c_void_p]
++            objc.objc_msgSend.restype = c_void_p
++            shared_app = c_void_p(objc.objc_msgSend(UIApplication, sharedApplication))
++
++            # Open the URL on the shared application
++            openURL_ = c_void_p(objc.sel_registerName(b'openURL:'))
++            objc.objc_msgSend.argtypes = [c_void_p, c_void_p, c_void_p]
++            objc.objc_msgSend.restype = None
++            objc.objc_msgSend(shared_app, openURL_, nsurl)
++
++            return True
++
++    register("mobilesafari", None, MobileSafari(), preferred=True)
+ 
+ #
+ # Platform support for Windows
+diff --git a/Makefile.pre.in b/Makefile.pre.in
+index b356f62..50ed6e0 100644
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -344,6 +344,8 @@ IO_OBJS=	\
+ ##########################################################################
+ 
+ LIBFFI_INCLUDEDIR=	@LIBFFI_INCLUDEDIR@
++LIBFFI_LIBDIR=	@LIBFFI_LIBDIR@
++LIBFFI_LIB=@LIBFFI_LIB@
+ 
+ ##########################################################################
+ # Parser
+diff --git a/Modules/_posixsubprocess.c b/Modules/_posixsubprocess.c
+index 9132f13..f8f385a 100644
+--- a/Modules/_posixsubprocess.c
++++ b/Modules/_posixsubprocess.c
+@@ -31,10 +31,20 @@
+ 
+ #include "posixmodule.h"
+ 
++#if defined(__APPLE__)
++#include "TargetConditionals.h"
++#endif
++
+ #ifdef _Py_MEMORY_SANITIZER
+ # include <sanitizer/msan_interface.h>
+ #endif
+ 
++// iOS/tvOS/watchOS *define* a number of POSIX functions, but you can't use them
++// because they aren't conventional multiprocess environments.
++#if TARGET_OS_IPHONE
++#  undef HAVE_FORK
++#endif
++
+ #if defined(__ANDROID__) && __ANDROID_API__ < 21 && !defined(SYS_getdents64)
+ # include <sys/linux-syscalls.h>
+ # define SYS_getdents64  __NR_getdents64
+@@ -660,11 +670,15 @@ child_exec(char *const exec_array[],
+     saved_errno = 0;
+     for (i = 0; exec_array[i] != NULL; ++i) {
+         const char *executable = exec_array[i];
++#if defined(__ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__) || defined(__ENVIRONMENT_WATCH_OS_VERSION_MIN_REQUIRED__)
++	errno = ENOTSUP;
++#else
+         if (envp) {
+             execve(executable, argv, envp);
+         } else {
+             execv(executable, argv);
+         }
++#endif
+         if (errno != ENOENT && errno != ENOTDIR && saved_errno == 0) {
+             saved_errno = errno;
+         }
+@@ -730,7 +744,9 @@ do_fork_exec(char *const exec_array[],
+              PyObject *preexec_fn,
+              PyObject *preexec_fn_args_tuple)
+ {
+-
++/* iOS/tvOS/watchOS define the existence of fork, but it cannot be invoked;
++ * so fail fast if any attempt is made to invoke fork_exec */
++#ifdef HAVE_FORK
+     pid_t pid;
+ 
+ #ifdef VFORK_USABLE
+@@ -749,7 +765,7 @@ do_fork_exec(char *const exec_array[],
+             pid = fork();
+         }
+     } else
+-#endif
++#endif /* VFORK_USABLE */
+     {
+         pid = fork();
+     }
+@@ -780,6 +796,9 @@ do_fork_exec(char *const exec_array[],
+                py_fds_to_keep, preexec_fn, preexec_fn_args_tuple);
+     _exit(255);
+     return 0;  /* Dead code to avoid a potential compiler warning. */
++#else /* HAVE_FORK */
++    return -1;
++#endif /* HAVE_FORK */
+ }
+ 
+ 
+@@ -810,7 +829,9 @@ subprocess_fork_exec(PyObject *module, PyObject *args)
+     int need_after_fork = 0;
+     int saved_errno = 0;
+     int allow_vfork;
+-
++/* iOS/tvOS/watchOS define the existence of fork, but it cannot be invoked;
++ * so fail fast if any attempt is made to invoke fork_exec */
++#ifdef HAVE_FORK
+     if (!PyArg_ParseTuple(
+             args, "OOpO!OOiiiiiiiiii" _Py_PARSE_PID "OOOiOp:fork_exec",
+             &process_args, &executable_list,
+@@ -1017,7 +1038,7 @@ subprocess_fork_exec(PyObject *module, PyObject *args)
+         }
+         old_sigmask = &old_sigs;
+     }
+-#endif
++#endif /* VFORK_USABLE */
+ 
+     pid = do_fork_exec(exec_array, argv, envp, cwd,
+                        p2cread, p2cwrite, c2pread, c2pwrite,
+@@ -1049,7 +1070,7 @@ subprocess_fork_exec(PyObject *module, PyObject *args)
+          * the thread signal mask. */
+         (void) pthread_sigmask(SIG_SETMASK, old_sigmask, NULL);
+     }
+-#endif
++#endif /* VFORK_USABLE */
+ 
+     if (need_after_fork)
+         PyOS_AfterFork_Parent();
+@@ -1080,6 +1101,9 @@ cleanup:
+     Py_XDECREF(gc_module);
+ 
+     return pid == -1 ? NULL : PyLong_FromPid(pid);
++#else /* HAVE_FORK */
++    return NULL;
++#endif
+ }
+ 
+ 
+diff --git a/Modules/faulthandler.c b/Modules/faulthandler.c
+index 04995d2..a57daca 100644
+--- a/Modules/faulthandler.c
++++ b/Modules/faulthandler.c
+@@ -1,3 +1,7 @@
++#ifdef __APPLE__
++#  include "TargetConditionals.h"
++#endif /* __APPLE__ */
++
+ #include "Python.h"
+ #include "pycore_initconfig.h"    // _PyStatus_ERR
+ #include "pycore_pyerrors.h"      // _Py_DumpExtensionModules
+@@ -19,6 +23,11 @@
+ #  include <sys/resource.h>
+ #endif
+ 
++// tvOS and watchOS don't provide a number of important POSIX functions.
++#if defined(__ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__) || defined(__ENVIRONMENT_WATCH_OS_VERSION_MIN_REQUIRED__)
++#  undef HAVE_SIGALTSTACK
++#endif /* TVOS || WATCHOS */
++
+ /* Using an alternative stack requires sigaltstack()
+    and sigaction() SA_ONSTACK */
+ #if defined(HAVE_SIGALTSTACK) && defined(HAVE_SIGACTION)
 diff --git a/Modules/getpath_noop.c b/Modules/getpath_noop.c
 index c10e41d..5d4863a 100644
 --- a/Modules/getpath_noop.c
@@ -23,21 +1354,676 @@ index c10e41d..5d4863a 100644
 +    Py_RETURN_NONE;
 +}
 +
+diff --git a/Modules/mathmodule.c b/Modules/mathmodule.c
+index 0a907a0..f2ce439 100644
+--- a/Modules/mathmodule.c
++++ b/Modules/mathmodule.c
+@@ -76,6 +76,10 @@ module math
+ /*[clinic end generated code: output=da39a3ee5e6b4b0d input=76bc7002685dd942]*/
+ 
+ 
++#ifdef __APPLE__
++#  include "TargetConditionals.h"
++#endif /* __APPLE__ */
++
+ /*
+    sin(pi*x), giving accurate results for all finite x (especially x
+    integral or close to an integer).  This is here for use in the
+diff --git a/Modules/posixmodule.c b/Modules/posixmodule.c
+index 2dfed7c..b38678d 100644
+--- a/Modules/posixmodule.c
++++ b/Modules/posixmodule.c
+@@ -71,6 +71,7 @@
+  * errors.
+  */
+ #if defined(__APPLE__)
++#include "TargetConditionals.h"
+ 
+ #if defined(__has_builtin)
+ #if __has_builtin(__builtin_available)
+@@ -344,6 +345,26 @@ corresponding Unix manual entries for more information on calls.");
+ #  endif  /* _MSC_VER */
+ #endif  /* ! __WATCOMC__ || __QNX__ */
+ 
++// iOS/tvOS/watchOS *define* a number of POSIX functions, but you can't use them
++// because they aren't conventional multiprocess environment.
++#if TARGET_OS_IPHONE
++#  undef HAVE_EXECV
++#  undef HAVE_FORK
++#  undef HAVE_FORK1
++#  undef HAVE_FORKPTY
++#  undef HAVE_GETGROUPS
++#  undef HAVE_POSIX_SPAWN
++#  undef HAVE_POSIX_SPAWNP
++#  undef HAVE_SCHED_H
++#  undef HAVE_SENDFILE
++#  undef HAVE_SETPRIORITY
++#  undef HAVE_SPAWNV
++#  undef HAVE_WAIT
++#  undef HAVE_WAIT3
++#  undef HAVE_WAIT4
++#  undef HAVE_WAITPID
++#endif
++
+ /*[clinic input]
+ # one of the few times we lie about this name!
+ module os
+@@ -1581,7 +1602,9 @@ win32_get_reparse_tag(HANDLE reparse_point_handle, ULONG *reparse_tag)
+ */
+ #include <crt_externs.h>
+ #elif !defined(_MSC_VER) && (!defined(__WATCOMC__) || defined(__QNX__) || defined(__VXWORKS__))
++#  if !TARGET_OS_TV && !TARGET_OS_WATCH
+ extern char **environ;
++#  endif
+ #endif /* !_MSC_VER */
+ 
+ static PyObject *
+@@ -1597,6 +1620,7 @@ convertenviron(void)
+     d = PyDict_New();
+     if (d == NULL)
+         return NULL;
++#if !TARGET_OS_TV && !TARGET_OS_WATCH
+ #ifdef MS_WINDOWS
+     /* _wenviron must be initialized in this way if the program is started
+        through main() instead of wmain(). */
+@@ -1651,6 +1675,7 @@ convertenviron(void)
+         Py_DECREF(v);
+     }
+     return d;
++#endif
+ }
+ 
+ /* Set a POSIX-specific error from errno, and return NULL */
+@@ -4944,6 +4969,9 @@ os_system_impl(PyObject *module, PyObject *command)
+ /*[clinic end generated code: output=290fc437dd4f33a0 input=86a58554ba6094af]*/
+ {
+     long result;
++#if TARGET_OS_IPHONE
++    result = -1;
++#else
+     const char *bytes = PyBytes_AsString(command);
+ 
+     if (PySys_Audit("os.system", "(O)", command) < 0) {
+@@ -4953,6 +4981,7 @@ os_system_impl(PyObject *module, PyObject *command)
+     Py_BEGIN_ALLOW_THREADS
+     result = system(bytes);
+     Py_END_ALLOW_THREADS
++#endif
+     return result;
+ }
+ #endif
+@@ -13746,6 +13775,7 @@ DirEntry_test_mode(PyTypeObject *defining_class, DirEntry *self,
+     int is_symlink;
+     int need_stat;
+ #endif
++#if !TARGET_OS_TV && !TARGET_OS_WATCH
+ #ifdef MS_WINDOWS
+     unsigned long dir_bits;
+ #endif
+@@ -13806,7 +13836,7 @@ DirEntry_test_mode(PyTypeObject *defining_class, DirEntry *self,
+ #endif
+ 
+     return result;
+-
++#endif
+ error:
+     Py_XDECREF(st_mode);
+     Py_XDECREF(stat);
+diff --git a/Modules/pwdmodule.c b/Modules/pwdmodule.c
+index a757380..77ea7a1 100644
+--- a/Modules/pwdmodule.c
++++ b/Modules/pwdmodule.c
+@@ -1,5 +1,8 @@
+ 
+ /* UNIX password file access module */
++#ifdef __APPLE__
++#  include "TargetConditionals.h"
++#endif /* __APPLE__ */
+ 
+ #include "Python.h"
+ #include "posixmodule.h"
+@@ -182,6 +185,22 @@ pwd_getpwuid(PyObject *module, PyObject *uidobj)
+         if (nomem == 1) {
+             return PyErr_NoMemory();
+         }
++
++// iPhone has a "user" with UID 501, username "mobile"; but the simulator
++// doesn't reflect this. Generate a simulated response.
++#if TARGET_IPHONE_SIMULATOR
++        if (uid == 501) {
++            struct passwd mp;
++            mp.pw_name = "mobile";
++            mp.pw_passwd = "/smx7MYTQIi2M";
++            mp.pw_uid = 501;
++            mp.pw_gid = 501;
++            mp.pw_gecos = "Mobile User";
++            mp.pw_dir = "/var/mobile";
++            mp.pw_shell = "/bin/sh";
++            return mkpwent(module, &mp);
++        }
++#endif
+         PyObject *uid_obj = _PyLong_FromUid(uid);
+         if (uid_obj == NULL)
+             return NULL;
+@@ -265,6 +284,22 @@ pwd_getpwnam_impl(PyObject *module, PyObject *name)
+             PyErr_NoMemory();
+         }
+         else {
++// iPhone has a "user" with UID 501, username "mobile"; but the simulator
++// doesn't reflect this. Generate a simulated response.
++#if TARGET_IPHONE_SIMULATOR
++            if (strcmp(name, "mobile") == 0) {
++                struct passwd mp;
++                mp.pw_name = "mobile";
++                mp.pw_passwd = "/smx7MYTQIi2M";
++                mp.pw_uid = 501;
++                mp.pw_gid = 501;
++                mp.pw_gecos = "Mobile User";
++                mp.pw_dir = "/var/mobile";
++                mp.pw_shell = "/bin/sh";
++                retval = mkpwent(module, &mp);
++                goto out;
++            }
++#endif
+             PyErr_Format(PyExc_KeyError,
+                          "getpwnam(): name not found: %R", name);
+         }
+diff --git a/Modules/timemodule.c b/Modules/timemodule.c
+index 18f9ddb..2ed289a 100644
+--- a/Modules/timemodule.c
++++ b/Modules/timemodule.c
+@@ -62,6 +62,11 @@
+ #define SEC_TO_NS (1000 * 1000 * 1000)
+ 
+ 
++#ifdef __APPLE__
++#  include "TargetConditionals.h"
++#endif /* __APPLE__ */
++
++
+ /* Forward declarations */
+ static int pysleep(_PyTime_t timeout);
+ 
+@@ -263,11 +268,13 @@ time_clock_settime(PyObject *self, PyObject *args)
+     if (_PyTime_AsTimespec(t, &tp) == -1)
+         return NULL;
+ 
++#if !TARGET_OS_IPHONE
+     ret = clock_settime((clockid_t)clk_id, &tp);
+     if (ret != 0) {
+         PyErr_SetFromErrno(PyExc_OSError);
+         return NULL;
+     }
++#endif
+     Py_RETURN_NONE;
+ }
+ 
+@@ -296,11 +303,13 @@ time_clock_settime_ns(PyObject *self, PyObject *args)
+         return NULL;
+     }
+ 
++#if !TARGET_OS_IPHONE
+     ret = clock_settime((clockid_t)clk_id, &ts);
+     if (ret != 0) {
+         PyErr_SetFromErrno(PyExc_OSError);
+         return NULL;
+     }
++#endif
+     Py_RETURN_NONE;
+ }
+ 
+diff --git a/Python/bootstrap_hash.c b/Python/bootstrap_hash.c
+index 3a2a731..67097d2 100644
+--- a/Python/bootstrap_hash.c
++++ b/Python/bootstrap_hash.c
+@@ -34,6 +34,10 @@
+ #  define HAVE_GETENTRYPY_GETRANDOM_RUNTIME 1
+ #endif
+ 
++#ifdef __APPLE__
++#  include "TargetConditionals.h"
++#endif /* __APPLE__ */
++
+ 
+ #ifdef Py_DEBUG
+ int _Py_HashSecret_Initialized = 0;
+@@ -179,7 +183,9 @@ py_getrandom(void *buffer, Py_ssize_t size, int blocking, int raise)
+     return 1;
+ }
+ 
+-#elif defined(HAVE_GETENTROPY)
++// iOS, tvOS and watchOS have an incomplete definitions of getentropy
++// so it is *found* by configure, but doesn't actually exist.
++#elif defined(HAVE_GETENTROPY) && !TARGET_OS_IPHONE
+ #define PY_GETENTROPY 1
+ 
+ /* Fill buffer with size pseudo-random bytes generated by getentropy():
+diff --git a/Python/marshal.c b/Python/marshal.c
+index 2690f55..65dd71d 100644
+--- a/Python/marshal.c
++++ b/Python/marshal.c
+@@ -14,6 +14,10 @@
+ #include "pycore_hashtable.h"     // _Py_hashtable_t
+ #include "marshal.h"              // Py_MARSHAL_VERSION
+ 
++#ifdef __APPLE__
++#  include "TargetConditionals.h"
++#endif /* __APPLE__ */
++
+ /*[clinic input]
+ module marshal
+ [clinic start generated code]*/
+@@ -33,11 +37,13 @@ module marshal
+  * #if defined(MS_WINDOWS) && defined(_DEBUG)
+  */
+ #if defined(MS_WINDOWS)
+-#define MAX_MARSHAL_STACK_DEPTH 1000
+-#elif defined(__wasi__)
+-#define MAX_MARSHAL_STACK_DEPTH 1500
++#  define MAX_MARSHAL_STACK_DEPTH 1000
+ #else
+-#define MAX_MARSHAL_STACK_DEPTH 2000
++#  if TARGET_OS_IPHONE
++#    define MAX_MARSHAL_STACK_DEPTH 1500
++#  else
++#    define MAX_MARSHAL_STACK_DEPTH 2000
++#  endif
+ #endif
+ 
+ #define TYPE_NULL               '0'
+diff --git a/aclocal.m4 b/aclocal.m4
+index 6a33c0c..9f8d4f9 100644
+--- a/aclocal.m4
++++ b/aclocal.m4
+@@ -1,6 +1,6 @@
+-# generated automatically by aclocal 1.16.3 -*- Autoconf -*-
++# generated automatically by aclocal 1.16.5 -*- Autoconf -*-
+ 
+-# Copyright (C) 1996-2020 Free Software Foundation, Inc.
++# Copyright (C) 1996-2021 Free Software Foundation, Inc.
+ 
+ # This file is free software; the Free Software Foundation
+ # gives unlimited permission to copy and/or distribute it,
+@@ -227,7 +227,7 @@ AC_DEFUN([AX_CHECK_OPENSSL], [
+     if ! $found; then
+         OPENSSL_INCLUDES=
+         for ssldir in $ssldirs; do
+-            AC_MSG_CHECKING([for openssl/ssl.h in $ssldir])
++            AC_MSG_CHECKING([for include/openssl/ssl.h in $ssldir])
+             if test -f "$ssldir/include/openssl/ssl.h"; then
+                 OPENSSL_INCLUDES="-I$ssldir/include"
+                 OPENSSL_LDFLAGS="-L$ssldir/lib"
+@@ -276,7 +276,7 @@ AC_DEFUN([AX_CHECK_OPENSSL], [
+ ])
+ 
+ # pkg.m4 - Macros to locate and utilise pkg-config.   -*- Autoconf -*-
+-# serial 11 (pkg-config-0.29.1)
++# serial 12 (pkg-config-0.29.2)
+ 
+ dnl Copyright © 2004 Scott James Remnant <scott@netsplit.com>.
+ dnl Copyright © 2012-2015 Dan Nicholson <dbn.lists@gmail.com>
+@@ -318,7 +318,7 @@ dnl
+ dnl See the "Since" comment for each macro you use to see what version
+ dnl of the macros you require.
+ m4_defun([PKG_PREREQ],
+-[m4_define([PKG_MACROS_VERSION], [0.29.1])
++[m4_define([PKG_MACROS_VERSION], [0.29.2])
+ m4_if(m4_version_compare(PKG_MACROS_VERSION, [$1]), -1,
+     [m4_fatal([pkg.m4 version $1 or higher is required but ]PKG_MACROS_VERSION[ found])])
+ ])dnl PKG_PREREQ
+@@ -419,7 +419,7 @@ AC_ARG_VAR([$1][_CFLAGS], [C compiler flags for $1, overriding pkg-config])dnl
+ AC_ARG_VAR([$1][_LIBS], [linker flags for $1, overriding pkg-config])dnl
+ 
+ pkg_failed=no
+-AC_MSG_CHECKING([for $1])
++AC_MSG_CHECKING([for $2])
+ 
+ _PKG_CONFIG([$1][_CFLAGS], [cflags], [$2])
+ _PKG_CONFIG([$1][_LIBS], [libs], [$2])
+@@ -551,77 +551,9 @@ AS_VAR_COPY([$1], [pkg_cv_][$1])
+ AS_VAR_IF([$1], [""], [$5], [$4])dnl
+ ])dnl PKG_CHECK_VAR
+ 
+-dnl PKG_WITH_MODULES(VARIABLE-PREFIX, MODULES,
+-dnl   [ACTION-IF-FOUND],[ACTION-IF-NOT-FOUND],
+-dnl   [DESCRIPTION], [DEFAULT])
+-dnl ------------------------------------------
+-dnl
+-dnl Prepare a "--with-" configure option using the lowercase
+-dnl [VARIABLE-PREFIX] name, merging the behaviour of AC_ARG_WITH and
+-dnl PKG_CHECK_MODULES in a single macro.
+-AC_DEFUN([PKG_WITH_MODULES],
+-[
+-m4_pushdef([with_arg], m4_tolower([$1]))
+-
+-m4_pushdef([description],
+-           [m4_default([$5], [build with ]with_arg[ support])])
+-
+-m4_pushdef([def_arg], [m4_default([$6], [auto])])
+-m4_pushdef([def_action_if_found], [AS_TR_SH([with_]with_arg)=yes])
+-m4_pushdef([def_action_if_not_found], [AS_TR_SH([with_]with_arg)=no])
+-
+-m4_case(def_arg,
+-            [yes],[m4_pushdef([with_without], [--without-]with_arg)],
+-            [m4_pushdef([with_without],[--with-]with_arg)])
+-
+-AC_ARG_WITH(with_arg,
+-     AS_HELP_STRING(with_without, description[ @<:@default=]def_arg[@:>@]),,
+-    [AS_TR_SH([with_]with_arg)=def_arg])
+-
+-AS_CASE([$AS_TR_SH([with_]with_arg)],
+-            [yes],[PKG_CHECK_MODULES([$1],[$2],$3,$4)],
+-            [auto],[PKG_CHECK_MODULES([$1],[$2],
+-                                        [m4_n([def_action_if_found]) $3],
+-                                        [m4_n([def_action_if_not_found]) $4])])
+-
+-m4_popdef([with_arg])
+-m4_popdef([description])
+-m4_popdef([def_arg])
+-
+-])dnl PKG_WITH_MODULES
+-
+-dnl PKG_HAVE_WITH_MODULES(VARIABLE-PREFIX, MODULES,
+-dnl   [DESCRIPTION], [DEFAULT])
+-dnl -----------------------------------------------
+-dnl
+-dnl Convenience macro to trigger AM_CONDITIONAL after PKG_WITH_MODULES
+-dnl check._[VARIABLE-PREFIX] is exported as make variable.
+-AC_DEFUN([PKG_HAVE_WITH_MODULES],
+-[
+-PKG_WITH_MODULES([$1],[$2],,,[$3],[$4])
+-
+-AM_CONDITIONAL([HAVE_][$1],
+-               [test "$AS_TR_SH([with_]m4_tolower([$1]))" = "yes"])
+-])dnl PKG_HAVE_WITH_MODULES
+-
+-dnl PKG_HAVE_DEFINE_WITH_MODULES(VARIABLE-PREFIX, MODULES,
+-dnl   [DESCRIPTION], [DEFAULT])
+-dnl ------------------------------------------------------
+-dnl
+-dnl Convenience macro to run AM_CONDITIONAL and AC_DEFINE after
+-dnl PKG_WITH_MODULES check. HAVE_[VARIABLE-PREFIX] is exported as make
+-dnl and preprocessor variable.
+-AC_DEFUN([PKG_HAVE_DEFINE_WITH_MODULES],
+-[
+-PKG_HAVE_WITH_MODULES([$1],[$2],[$3],[$4])
+-
+-AS_IF([test "$AS_TR_SH([with_]m4_tolower([$1]))" = "yes"],
+-        [AC_DEFINE([HAVE_][$1], 1, [Enable ]m4_tolower([$1])[ support])])
+-])dnl PKG_HAVE_DEFINE_WITH_MODULES
+-
+ # AM_CONDITIONAL                                            -*- Autoconf -*-
+ 
+-# Copyright (C) 1997-2020 Free Software Foundation, Inc.
++# Copyright (C) 1997-2021 Free Software Foundation, Inc.
+ #
+ # This file is free software; the Free Software Foundation
+ # gives unlimited permission to copy and/or distribute it,
+@@ -652,7 +584,7 @@ AC_CONFIG_COMMANDS_PRE(
+ Usually this means the macro was only invoked conditionally.]])
+ fi])])
+ 
+-# Copyright (C) 2006-2020 Free Software Foundation, Inc.
++# Copyright (C) 2006-2021 Free Software Foundation, Inc.
+ #
+ # This file is free software; the Free Software Foundation
+ # gives unlimited permission to copy and/or distribute it,
+diff --git a/config.sub b/config.sub
+index d74fb6d..09ebc42 100644
+--- a/config.sub
++++ b/config.sub
+@@ -1121,7 +1121,7 @@ case $cpu-$vendor in
+ 	xscale-* | xscalee[bl]-*)
+ 		cpu=`echo "$cpu" | sed 's/^xscale/arm/'`
+ 		;;
+-	arm64-*)
++	arm64-* | arm64_32-*)
+ 		cpu=aarch64
+ 		;;
+ 
+@@ -1723,7 +1723,7 @@ case $os in
+ 	     | hpux* | unos* | osf* | luna* | dgux* | auroraux* | solaris* \
+ 	     | sym* |  plan9* | psp* | sim* | xray* | os68k* | v88r* \
+ 	     | hiux* | abug | nacl* | netware* | windows* \
+-	     | os9* | macos* | osx* | ios* \
++	     | os9* | macos* | osx* | ios* | tvos* | watchos* \
+ 	     | mpw* | magic* | mmixware* | mon960* | lnews* \
+ 	     | amigaos* | amigados* | msdos* | newsos* | unicos* | aof* \
+ 	     | aos* | aros* | cloudabi* | sortix* | twizzler* \
+@@ -1786,6 +1786,8 @@ case $kernel-$os in
+ 		;;
+ 	*-eabi* | *-gnueabi*)
+ 		;;
++	ios*-simulator | tvos*-simulator | watchos*-simulator)
++		;;
+ 	-*)
+ 		# Blank kernel with real OS is always fine.
+ 		;;
 diff --git a/configure.ac b/configure.ac
-index 99d3147..66384ea 100644
+index 90008bc..f53226d 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -6954,7 +6954,8 @@ dnl AC_MSG_NOTICE([m4_set_list([_PY_STDLIB_MOD_SET_NA])])
+@@ -545,6 +545,15 @@ then
+ 	*-*-cygwin*)
+ 		ac_sys_system=Cygwin
+ 		;;
++	*-apple-ios*)
++		ac_sys_system=iOS
++		;;
++	*-apple-tvos*)
++		ac_sys_system=tvOS
++		;;
++	*-apple-watchos*)
++		ac_sys_system=watchOS
++		;;
+ 	*-*-vxworks*)
+ 	    ac_sys_system=VxWorks
+ 	    ;;
+@@ -600,6 +609,15 @@ if test "$cross_compiling" = yes; then
+ 	*-*-cygwin*)
+ 		_host_cpu=
+ 		;;
++	*-apple-*)
++		case "$host_cpu" in
++		arm*)
++			_host_cpu=arm
++			;;
++		*)
++			_host_cpu=$host_cpu
++		esac
++		;;
+ 	*-*-vxworks*)
+ 		_host_cpu=$host_cpu
+ 		;;
+@@ -675,6 +693,13 @@ case $ac_sys_system/$ac_sys_release in
+     define_xopen_source=no;;
+   Darwin/@<:@[12]@:>@@<:@0-9@:>@.*)
+     define_xopen_source=no;;
++  # On iOS, defining _POSIX_C_SOURCE also disables platform specific features.
++  iOS/*)
++    define_xopen_source=no;;
++  tvOS/*)
++    define_xopen_source=no;;
++  watchOS/*)
++    define_xopen_source=no;;
+   # On QNX 6.3.2, defining _XOPEN_SOURCE prevents netdb.h from
+   # defining NI_NUMERICHOST.
+   QNX/6.3.2)
+@@ -1054,7 +1079,30 @@ cat > conftest.c <<EOF
+ #elif defined(__gnu_hurd__)
+         i386-gnu
+ #elif defined(__APPLE__)
+-        darwin
++#  include "TargetConditionals.h"
++#  if TARGET_OS_IOS
++#    if TARGET_OS_SIMULATOR
++       iphonesimulator
++#    else
++       iphoneos
++#    endif
++#  elif TARGET_OS_TV
++#    if TARGET_OS_SIMULATOR
++       appletvsimulator
++#    else
++       appletvos
++#    endif
++#  elif TARGET_OS_WATCH
++#    if TARGET_OS_SIMULATOR
++       watchsimulator
++#    else
++       watchos
++#    endif
++#  elif TARGET_OS_OSX
++     darwin
++#  else
++#    error unknown Apple platform
++#  endif
+ #elif defined(__VXWORKS__)
+         vxworks
+ #elif defined(__wasm32__)
+@@ -1095,6 +1143,9 @@ rm -f conftest.c conftest.out
+ AC_MSG_CHECKING([for multiarch])
+ AS_CASE([$ac_sys_system],
+   [Darwin*], [MULTIARCH=""],
++  [iOS*], [MULTIARCH=""],
++  [tvOS*], [MULTIARCH=""],
++  [watchOS*], [MULTIARCH=""],
+   [FreeBSD*], [MULTIARCH=""],
+   [MULTIARCH=$($CC --print-multiarch 2>/dev/null)]
+ )
+@@ -1139,6 +1190,16 @@ AS_CASE([$host/$ac_cv_cc_name],
+   [wasm32-unknown-emscripten/clang], [PY_SUPPORT_TIER=3], dnl WebAssembly Emscripten
+   [wasm32-unknown-wasi/clang],       [PY_SUPPORT_TIER=3], dnl WebAssembly System Interface
+   [x86_64-*-freebsd*/clang],         [PY_SUPPORT_TIER=3], dnl FreeBSD on AMD64
++  dnl [aarch64-apple-ios/clang],         [PY_SUPPORT_TIER=3], dnl iOS on ARM64
++  dnl [aarch64-apple-ios-simulator/clang],   [PY_SUPPORT_TIER=3], dnl iOS Simulator on arm64
++  dnl [x86_64-apple-ios-simulator/clang],    [PY_SUPPORT_TIER=3], dnl iOS Simulator on x86_64
++  dnl [aarch64-apple-tvos/clang],        [PY_SUPPORT_TIER=3], dnl Apple tvOS on ARM64
++  dnl [aarch64-apple-tvos-simulator/clang],  [PY_SUPPORT_TIER=3], dnl Apple tvOS Simulator on ARM64
++  dnl [x86_64-apple-tvos-simulator/clang],   [PY_SUPPORT_TIER=3], dnl Apple tvOS Simulator on x86_64
++  dnl [arm64_32-apple-watchos/clang],        [PY_SUPPORT_TIER=3], dnl Apple watchOS on ARM64_32
++  dnl [aarch64-apple-watchos-simulator/clang],   [PY_SUPPORT_TIER=3], dnl Apple watchOS Simulator on ARM64
++  dnl [x86_64-apple-watchos-simulator/clang],    [PY_SUPPORT_TIER=3], dnl Apple watchOS Simulator on x86_64
++
+   [PY_SUPPORT_TIER=0]
+ )
+ 
+@@ -1627,11 +1688,23 @@ fi
+ 
+ AC_CHECK_TOOLS([READELF], [readelf], [:])
+ if test "$cross_compiling" = yes; then
+-    case "$READELF" in
+-	readelf|:)
+-	AC_MSG_ERROR([readelf for the host is required for cross builds])
+-	;;
+-    esac
++	case "$host" in
++	*-apple-ios*)
++		# readelf not required for iOS cross builds.
++        	;;
++	*-apple-tvos*)
++		# readelf not required for tvOS cross builds.
++        	;;
++	*-apple-watchos*)
++		# readelf not required for watchOS cross builds.
++        	;;
++	*)
++      case "$READELF" in
++      readelf|:)
++      AC_MSG_ERROR([readelf for the host is required for cross builds])
++      ;;
++      esac
++  esac
+ fi
+ AC_SUBST(READELF)
+ 
+@@ -3167,6 +3240,9 @@ then
+ 			BLDSHARED="$LDSHARED"
+ 		fi
+ 		;;
++	iOS/*|tvOS/*|watchOS/*)
++		LDSHARED='$(CC) -bundle -undefined dynamic_lookup'
++		LDCXXSHARED='$(CXX) -bundle -undefined dynamic_lookup';;
+ 	Emscripten|WASI)
+ 		LDSHARED='$(CC) -shared'
+ 		LDCXXSHARED='$(CXX) -shared';;
+@@ -3636,20 +3712,30 @@ then
+     esac
+     AC_MSG_RESULT($with_system_ffi)
+ else
+-    AC_MSG_RESULT(yes)
+-    if test "$with_system_ffi" != ""
++    if test "$ac_sys_system" = "iOS" || test "$ac_sys_system" = "tvOS" || test "$ac_sys_system" = "watchOS"
+     then
+-        AC_MSG_WARN([--with(out)-system-ffi is ignored on this platform])
++        AC_MSG_RESULT(no)
++        AC_MSG_WARN([Using user-provided libffi configuration])
++        LIBFFI_LIBDIR="${LIBFFI_LIBDIR}"
++        LIBFFI_LIB="${LIBFFI_LIB}"
++    else
++        AC_MSG_RESULT(yes)
++        if test "$with_system_ffi" != ""
++        then
++            AC_MSG_WARN([--with(out)-system-ffi is ignored on this platform])
++        fi
++        with_system_ffi="yes"
+     fi
+-    with_system_ffi="yes"
+ fi
+ 
+ if test "$with_system_ffi" = "yes" && test -n "$PKG_CONFIG"; then
+     LIBFFI_INCLUDEDIR="`"$PKG_CONFIG" libffi --cflags-only-I 2>/dev/null | sed -e 's/^-I//;s/ *$//'`"
+ else
+-    LIBFFI_INCLUDEDIR=""
++    LIBFFI_INCLUDEDIR="${LIBFFI_INCLUDEDIR}"
+ fi
+ AC_SUBST(LIBFFI_INCLUDEDIR)
++AC_SUBST(LIBFFI_LIBDIR)
++AC_SUBST(LIBFFI_LIB)
+ 
+ # Check for use of the system libmpdec library
+ AC_MSG_CHECKING(for --with-system-libmpdec)
+@@ -6830,6 +6916,30 @@ AS_CASE([$ac_sys_system],
+   [AIX], [PY_STDLIB_MOD_SET_NA([_scproxy], [spwd])],
+   [VxWorks*], [PY_STDLIB_MOD_SET_NA([_scproxy], [_crypt], [termios], [grp])],
+   [Darwin], [PY_STDLIB_MOD_SET_NA([ossaudiodev], [spwd])],
++  [iOS|tvOS|watchOS], [
++    dnl subprocess and multiprocessing are not supported (no fork syscall).
++    dnl curses and tkinter user interface are not available.
++    dnl gdbm, and nis aren't available
++    dnl Stub implementations are provided for pwd, grp etc APIs
++    PY_STDLIB_MOD_SET_NA(
++      [_curses],
++      [_curses_panel],
++      [_gdbm],
++      [_multiprocessing],
++      [_posixshmem],
++      [_posixsubprocess],
++      [_scproxy],
++      [_tkinter],
++      [_xxsubinterpreters],
++      [grp],
++      [nis],
++      [ossaudiodev],
++      [readline],
++      [pwd],
++      [spwd],
++      [syslog],
++    )
++  ],
+   [CYGWIN*], [PY_STDLIB_MOD_SET_NA([_scproxy], [nis])],
+   [QNX*], [PY_STDLIB_MOD_SET_NA([_scproxy], [nis])],
+   [FreeBSD*], [PY_STDLIB_MOD_SET_NA([_scproxy], [spwd])],
+@@ -6887,7 +6997,7 @@ dnl AC_MSG_NOTICE([m4_set_list([_PY_STDLIB_MOD_SET_NA])])
  dnl Default value for Modules/Setup.stdlib build type
  AS_CASE([$host_cpu],
    [wasm32|wasm64], [MODULE_BUILDTYPE=static],
 -  [MODULE_BUILDTYPE=${MODULE_BUILDTYPE:-shared}]
-+  [aarch64], [MODULE_BUILDTYPE=static],
 +  [MODULE_BUILDTYPE=${MODULE_BUILDTYPE:-static}]
  )
  AC_SUBST([MODULE_BUILDTYPE])
  
-@@ -6963,6 +6964,7 @@ AC_MSG_CHECKING([for additional Modules/Setup files])
+@@ -6896,6 +7006,7 @@ AC_MSG_CHECKING([for additional Modules/Setup files])
  AS_CASE([$ac_sys_system],
      [Emscripten], [MODULES_SETUP_STDLIB=Modules/Setup.stdlib],
      [WASI], [MODULES_SETUP_STDLIB=Modules/Setup.stdlib],
@@ -45,6 +2031,91 @@ index 99d3147..66384ea 100644
      [MODULES_SETUP_STDLIB=]
  )
  AC_MSG_RESULT([$MODULES_SETUP_STDLIB])
+diff --git a/setup.py b/setup.py
+index 15d0d45..a080c69 100644
+--- a/setup.py
++++ b/setup.py
+@@ -82,6 +82,9 @@ HOST_PLATFORM = get_platform()
+ MS_WINDOWS = (HOST_PLATFORM == 'win32')
+ CYGWIN = (HOST_PLATFORM == 'cygwin')
+ MACOS = (HOST_PLATFORM == 'darwin')
++IOS = HOST_PLATFORM.startswith('ios-')
++TVOS = HOST_PLATFORM.startswith('tvos-')
++WATCHOS = HOST_PLATFORM.startswith('watchos-')
+ AIX = (HOST_PLATFORM.startswith('aix'))
+ VXWORKS = ('vxworks' in HOST_PLATFORM)
+ EMSCRIPTEN = HOST_PLATFORM == 'emscripten-wasm32'
+@@ -166,16 +169,20 @@ def sysroot_paths(make_vars, subdirs):
+     for var_name in make_vars:
+         var = sysconfig.get_config_var(var_name)
+         if var is not None:
+-            m = re.search(r'--sysroot=([^"]\S*|"[^"]+")', var)
+-            if m is not None:
+-                sysroot = m.group(1).strip('"')
+-                for subdir in subdirs:
+-                    if os.path.isabs(subdir):
+-                        subdir = subdir[1:]
+-                    path = os.path.join(sysroot, subdir)
+-                    if os.path.isdir(path):
+-                        dirs.append(path)
+-                break
++            for pattern in [
++                r'-isysroot\s*([^"]\S*|"[^"]+")',
++                r'--sysroot=([^"]\S*|"[^"]+")',
++            ]:
++                m = re.search(pattern, var)
++                if m is not None:
++                    sysroot = m.group(1).strip('"')
++                    for subdir in subdirs:
++                        if os.path.isabs(subdir):
++                            subdir = subdir[1:]
++                        path = os.path.join(sysroot, subdir)
++                        if os.path.isdir(path):
++                            dirs.append(path)
++                    break
+     return dirs
+ 
+ 
+@@ -1396,6 +1403,11 @@ class PyBuildExt(build_ext):
+             extra_compile_args.append('-DMACOSX')
+             include_dirs.append('_ctypes/darwin')
+ 
++        elif IOS or TVOS or WATCHOS:
++            sources.append('_ctypes/malloc_closure.c')
++            extra_compile_args.append('-DUSING_MALLOC_CLOSURE_DOT_C')
++            include_dirs.append('_ctypes/darwin')
++
+         elif HOST_PLATFORM == 'sunos5':
+             # XXX This shouldn't be necessary; it appears that some
+             # of the assembler code is non-PIC (i.e. it has relocations
+@@ -1418,7 +1430,8 @@ class PyBuildExt(build_ext):
+         self.addext(Extension('_ctypes_test', ['_ctypes/_ctypes_test.c']))
+ 
+         ffi_inc = sysconfig.get_config_var("LIBFFI_INCLUDEDIR")
+-        ffi_lib = None
++        ffi_lib_dir = sysconfig.get_config_var("LIBFFI_LIBDIR")
++        ffi_lib = sysconfig.get_config_var("LIBFFI_LIB")
+ 
+         ffi_inc_dirs = self.inc_dirs.copy()
+         if MACOS:
+@@ -1447,6 +1460,7 @@ class PyBuildExt(build_ext):
+             for lib_name in ('ffi', 'ffi_pic'):
+                 if (self.compiler.find_library_file(self.lib_dirs, lib_name)):
+                     ffi_lib = lib_name
++                    self.use_system_libffi = True
+                     break
+ 
+         if ffi_inc and ffi_lib:
+@@ -1460,7 +1474,8 @@ class PyBuildExt(build_ext):
+ 
+             ext.include_dirs.append(ffi_inc)
+             ext.libraries.append(ffi_lib)
+-            self.use_system_libffi = True
++            if ffi_lib_dir:
++                ext.library_dirs.append(ffi_lib_dir)
+ 
+         if sysconfig.get_config_var('HAVE_LIBDL'):
+             # for dlopen, see bpo-32647
 -- 
 2.25.1
 
