@@ -541,8 +541,6 @@ $$(PYTHON_SRCDIR-$(target))/Makefile: \
 	@echo ">>> Unpack and configure Python for $(target)"
 	mkdir -p $$(PYTHON_SRCDIR-$(target))
 	tar zxf downloads/Python-$(PYTHON_VERSION).tar.gz --strip-components 1 -C $$(PYTHON_SRCDIR-$(target))
-	# Apply target Python patches
-	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python.patch
 	# Apply jw patch
 	cd $$(PYTHON_SRCDIR-$(target)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && $(AUTOCONF)
 	# Configure target Python
@@ -764,8 +762,6 @@ $$(PYTHON_SRCDIR-$(sdk))/Makefile: \
 	@echo ">>> Unpack and configure Python for $(sdk)"
 	mkdir -p $$(PYTHON_SRCDIR-$(sdk))
 	tar zxf downloads/Python-$(PYTHON_VERSION).tar.gz --strip-components 1 -C $$(PYTHON_SRCDIR-$(sdk))
-	# Apply target Python patches
-	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python.patch
 	# Apply jw patch
 	cd $$(PYTHON_SRCDIR-$(sdk)) && patch -p1 < $(PROJECT_DIR)/patch/Python/Python-jw.patch && $(AUTOCONF)
 	# Configure target Python
